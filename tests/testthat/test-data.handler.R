@@ -530,7 +530,6 @@ test_that("vpa function (with dummy data) (level 2-3?)",{
   expect_equal(res_vpa_estb_tune5m_b_sigma$sigma[[2]],res_vpa_estb_tune5m_b_sigma$sigma[[3]])
 
   # TMB true + set lambda + 全F推定法．最尤法．b推定あり----
-  library(TMB)
   use_rvpa_tmb()
   res_vpa_estb_tune6m_b <- vpa(vpadat_estb, last.catch.zero = FALSE, min.age=c(0,0,0,0,0,0),max.age=c(3,3,0,0,3,3),
                                 Pope = TRUE,  tune=TRUE, term.F="all",est.method="ml" ,b.est=TRUE,p.init=c(0.2,0.3,0.6,0.6),abund=c("N","N","N","N","N","N"), lambda=0.02, TMB=TRUE,fc.year=1998:2000)
