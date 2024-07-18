@@ -23,6 +23,14 @@ use_rvpa_tmb <- function(TmbFile = "rvpa_tmb",
     stop("Please install TMB package!")
   }
 file.copy( from=paste0(CppDir,"/",TmbFile,".cpp"), to=paste0(RunDir,"/",TmbFile,".cpp"), overwrite=overwrite)
+  print("before compile")
+  print(getwd())
+  print(list.files())
+  file.remove(paste0(TmbFile, ".o"))
+  file.remove(paste0(TmbFile, ".so"))
+  print(list.files())
   TMB::compile( paste0(TmbFile,".cpp") )
+  print("after compile")
+  print(list.files())
   dyn.load(TMB::dynlib(TmbFile))
 }
