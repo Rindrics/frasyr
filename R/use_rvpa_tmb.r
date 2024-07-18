@@ -29,7 +29,7 @@ file.copy( from=paste0(CppDir,"/",TmbFile,".cpp"), to=paste0(RunDir,"/",TmbFile,
   file.remove(paste0(TmbFile, ".o"))
   file.remove(paste0(TmbFile, ".so"))
   print(list.files())
-  TMB::compile( paste0(TmbFile,".cpp") )
+  TMB::compile( paste0(TmbFile,".cpp"), debug = TRUE )
   print("after compile")
   print(list.files())
   dyn.load(TMB::dynlib(TmbFile))
