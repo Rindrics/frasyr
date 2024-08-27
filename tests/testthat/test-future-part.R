@@ -414,22 +414,29 @@ test_that("check MSE feature",{ # ----
 
 test_that("future_vpa function (carry over TAC) (level 2)",{
 
+  # 0.1まで繰越
   data_future_test <- redo_future(data_future_test,
                                   list(nsim=10,nyear=10,
                                        HCR_TAC_reserve_rate=0.1,
                                        HCR_TAC_carry_rate=0.1,
                                        fix_recruit=NULL,fix_wcatch=NULL),
                                   only_data=TRUE)
-  # 0.1まで繰越
-  data_future_no_reserve <- list_modify(data_future_test$input,HCR_TAC_reserve_rate=0) %>%
-      safe_call(make_future_data,.)
-
   res_future_noMSE <- test_sd0_future(data_future_test)$res1
   expect_equal(all(round(res_future_noMSE$HCR_realized[as.character(2019:2023),,"wcatch"]/
                          res_future_noMSE$HCR_realized[as.character(2019:2023),,"original_ABC_plus"],3)
-                   ==0.9),TRUE)
+                   ==0.9),TRUE)  
 
+  # 繰入する場合
+  data_future_borrow <- list_modify(data_future_test$input,HCR_TAC_reserve_rate=-0.1, HCR_TAC_carry_rate=1) %>%
+      safe_call(make_future_data,.)
+  res_future_borrow <- test_sd0_future(data_future_borrow)$res1
+  expect_equal(all(round(res_future_borrow$HCR_realized[as.character(2019:2023),,"wcatch"]/
+                         res_future_borrow$HCR_realized[as.character(2019:2023),,"original_ABC_plus"],3)
+                   ==1.1),TRUE)
+  
   # 余るけど繰越をしない場合
+  data_future_no_reserve <- list_modify(data_future_test$input,HCR_TAC_reserve_rate=0) %>%
+      safe_call(make_future_data,.)  
   res_future_noreserve <- test_sd0_future(data_future_no_reserve)$res1  
   expect_equal(all(round(res_future_noreserve$HCR_realized[as.character(2019:2023),,"wcatch"]/
                          res_future_noreserve$HCR_realized[as.character(2019:2023),,"original_ABC_plus"],3)
@@ -489,8 +496,7 @@ test_that("future_vpa function (carry over TAC) (level 2)",{
   res_future_reserve_CC1$HCR_realized[as.character(2019:2025),1,"original_ABC_plus"]%>%
       round() %>% unlist() %>% as.numeric() %>% expect_equal(c(100,rep(110,6)))
 
-  expect_error(data_future_no_reserve <- list_modify(data_future_test$input,HCR_TAC_reserve_rate=-1) %>%
-                   safe_call(make_future_data,.))
+
 
 })
 
@@ -542,7 +548,7 @@ test_that("set_SR_mat with sample data", {
                                       "recruit","ssb",
                                       "intercept","sd",#9-10
                                       "bias_factor", #11
-                                      "blank2","blank3","blank4","blank5")))
+                                      "gamma","blank3","blank4","blank5")))
   SR_mat[, , "deviance"]
 
   # set_SR_matを用いて、加入のdeviationを計算しSR_matに格納する。

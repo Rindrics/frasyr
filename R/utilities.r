@@ -390,21 +390,22 @@ ref.F <- function(
         else waa.catch <- waa
     }
 
-    if(is.null(waa.catch)){
-      if(is.null(res$input$dat$waa.catch)){
-        waa.catch <- waa
-      }
-      else{
-        waa.catch <- apply_year_colum(res$input$dat$waa.catch,waa.year)
-      }
-    }
+## Remove duplicate code  
+#    if(is.null(waa.catch)){
+#      if(is.null(res$input$dat$waa.catch)){
+#        waa.catch <- waa
+#      }
+#      else{
+#       waa.catch <- apply_year_colum(res$input$dat$waa.catch,waa.year) # here, waa.year should be waa.catch.year
+#      }
+#    }
 
     na <- sum(!is.na(Fcurrent))
     ssb.coef <- ifelse(is.null(res$ssb.coef),0,res$ssb.coef)
 
     min.age <- min(as.numeric(rownames(res$naa)))
     if(min.age==0) slide.tmp <- TRUE else slide.tmp <- -1:-min.age
-
+   
     if(!is.null(rps.year)){
       rps.data <- data.frame(year=as.numeric(names(colSums(ssb,na.rm=T))),
                              ssb=as.numeric(colSums(ssb,na.rm=T)),
@@ -429,6 +430,11 @@ ref.F <- function(
     }
   }
   if(is.null(res)){ # VPA結果を与えない場合
+
+    if(is.vector(Fcurrent) && is.null(names(Fcurrent))){
+        names(Fcurrent) <- 1:length(Fcurrent)
+    }
+    
     sel <- Fcurrent/max(Fcurrent,na.rm=TRUE)
     na <- length(Fcurrent)
     assertthat::assert_that(length(Fcurrent) == na)
@@ -857,7 +863,7 @@ out.vpa <- function(res=NULL,    # VPA result
                                          out.AR = srres$input$out.AR)
     }
 
-    if(class(srres)=="fit.SR"){
+    if("fit.SR" %in% class(srres)){
       write("\n# SR fit data",file=csvname,append=T)
       srres$input$SRdata %>% as_tibble() %>%  mutate(weight=srres$input$w) %>%
         write_csv(path=csvname,append=T,col_names=TRUE)
@@ -866,7 +872,7 @@ out.vpa <- function(res=NULL,    # VPA result
       write_csv(sr_summary,path=csvname,append=T,
                 col_names=TRUE)
     }
-    if(class(srres)=="fit.SRregime"){
+    if("fit.SRregime" %in% class(srres)){
       write("\n# SR fit data",file=csvname,append=T)
       srres$input$SRdata %>% as_tibble() %>%  mutate(weight=srres$input$w) %>%
         write_csv(path=csvname,append=T,col_names=TRUE)
@@ -883,7 +889,7 @@ out.vpa <- function(res=NULL,    # VPA result
       # tentative
       write_csv(partable, path=csvname,append=T,col_names=TRUE)
     }
-    if(class(srres)=="SRfit.average"){
+    if("SRfit.average" %in% class(srres)){
       write("\n# SR fit data",file=csvname,append=T)
       srres[[1]]$input$SRdata %>% as_tibble() %>%  mutate(weight=srres$input$w) %>%
         write_csv(path=csvname, append=T, col_names=TRUE)
@@ -902,7 +908,7 @@ out.vpa <- function(res=NULL,    # VPA result
   }
 
   tmpfunc <- function(fres, label=""){
-    if(class(fres)=="future_new"){
+    if(class(fres)%in%"future_new"){
       fres <- format_to_old_future(fres)
     }
 
@@ -947,7 +953,7 @@ out.vpa <- function(res=NULL,    # VPA result
     kobeII.table_name <- names(kobeII)
     for(i in 1:length(kobeII.table_name)){
       tmptable <- kobeII[kobeII.table_name[i]][[1]]
-      if(!is.na(tmptable) && nrow(tmptable)>0){
+      if(nrow(tmptable)>0){
         write(str_c("\n# ",kobeII.table_name[i]),file=csvname,append=T)
         write_csv(tmptable,path=csvname,append=TRUE,
                   col_names = TRUE)
@@ -1391,7 +1397,7 @@ convert_future_list_table <- function(fout_list,name_vector=NULL,beta_vector=NUL
 
 convert_future_table <- function(fout,label="tmp"){
 
-  if(class(fout)=="future_new") fout <- format_to_old_future(fout)
+  if(class(fout)%in%"future_new") fout <- format_to_old_future(fout)
 
   U_table <- fout$vwcaa/fout$vbiom_catch
   if(is.null(fout$Fsakugen)) fout$Fsakugen <- -(1-fout$faa[1,,]/fout$currentF[1])
@@ -1439,7 +1445,7 @@ convert_vpa_tibble <- function(vpares,SPRtarget=NULL){
 
   if (is.null(vpares$input$dat$waa.catch)) {
     vpares$input$dat$waa.catch <- vpares$input$dat$waa
-    if (class(vpares)=="sam") {
+    if (class(vpares)%in%"sam") {
       total.catch <- colSums(vpares$caa*vpares$input$dat$waa,na.rm=T)
     } else {
       total.catch <- colSums(vpares$input$dat$caa*vpares$input$dat$waa,na.rm=T)
@@ -1916,10 +1922,13 @@ beta.simulation <- function(finput,beta_vector,
         if(save_detail[i]==1) res_list[[i]] <- fres_base
 #        fres_base <- format_to_old_future(fres_base)
       }
+
+      # normal statistics
       tmp <- convert_future_table(fres_base,label=label_name[i]) %>%
         rename(HCR_name=label)  %>% mutate(beta=beta_vector[i])
       tb <- bind_rows(tb,tmp)
 
+      # summary statistics
       tmp <- calculate_all_pm(fres_base,...) %>%
           mutate(HCR_name=label_name[i], beta=beta_vector[i])
       tb2 <- bind_rows(tb2,tmp)
@@ -1943,18 +1952,25 @@ beta.simulation <- function(finput,beta_vector,
     res_list <- tb
     res_list[save_detail==0] <- NULL
 
-    tb2 <- purrr::map_dfr(seq_len(length(tb)), function(i){
-      calculate_all_pm(tb[[i]],...) %>%
-        rename(HCR_name=label_name[i],beta=beta_vector[i])
-    })
+    # summary statistics
+    tb2 <- list()
+    for(i in 1:length(tb)){
+        tb2[[i]] <- calculate_all_pm(tb[[i]],...) %>%
+            mutate(HCR_name=label_name[i], beta=beta_vector[i])        
+    }
+    tb2 <- tb2 %>% bind_rows()
 
+#    tb2 <- purrr::map_dfr(seq_len(length(tb)), function(i){
+#        calculate_all_pm(tb[[i]],...) %>%
+#        rename(HCR_name=label_name[i],beta=beta_vector[i])
+#    })
+
+    # normal statistics
     tb <- purrr::map_dfr(seq_len(length(tb)), function(i){
       format_to_old_future(tb[[i]]) %>%
         convert_future_table(label=label_name[i]) %>%
         rename(HCR_name=label)  %>% mutate(beta=beta_vector[i])
     })
-
-
   }
 
   if(sum(save_detail)==0) return(lst(tb,tb2))
@@ -2007,7 +2023,7 @@ calc_future_perSPR <- function(fout=NULL,
   }
   if(!is.null(fout)){
     info_source  <- "future"
-    if(class(fout)=="future_new") fout <- format_to_old_future(fout)
+    if(class(fout)%in%"future_new") fout <- format_to_old_future(fout)
   }
   if(!is.null(biopar))  info_source  <- "bio" # bioが優先される
 
@@ -2245,7 +2261,7 @@ get_performance <- function(future_list,res_vpa,ABC_year=2021,
   future_list_original <- future_list
   future_list <- purrr::map(future_list,
                             function(x) if(class(x)=="future_new")
-                              format_to_old_future(x) else x)
+                                            format_to_old_future(x) else x)
 
   if(is.null(names(future_list))) names(future_list) <- 1:length(future_list)
 
@@ -3113,13 +3129,16 @@ calculate_all_pm <- function(res_future, SBtarget=-1, SBlimit=-1, SBban=-1, SBmi
 
     if(type=="AS"){
       x1 <- purrr::map_dfr(seq_len(length(age_label)),
-                       function(x) get_annual_pm(res_future$naa [x,year_future,],
+                           #                       function(x) get_annual_pm(res_future$naa [x,year_future,],
+                       function(x) get_annual_pm(res_future$naa [x,,],                           
                                                  fun,str_c(funname,"_naa_", age_label[x])))
       x2 <- purrr::map_dfr(seq_len(length(age_label)),
-                     function(x) get_annual_pm(res_future$wcaa[x,year_future,],
+                           #                     function(x) get_annual_pm(res_future$wcaa[x,year_future,],
+                     function(x) get_annual_pm(res_future$wcaa[x,,],                           
                                                fun,str_c(funname,"_wcaa_",age_label[x])))
       x3 <- purrr::map_dfr(seq_len(length(age_label)),
-                       function(x) get_annual_pm(res_future$faa [x,year_future,],
+#                           function(x) get_annual_pm(res_future$faa [x,year_future,],
+                       function(x) get_annual_pm(res_future$faa [x,,],                                                     
                                                  fun,str_c(funname,"_faa_", age_label[x])))      
     }
     else{
@@ -3176,13 +3195,14 @@ calculate_all_pm <- function(res_future, SBtarget=-1, SBlimit=-1, SBban=-1, SBmi
     ABC_year     <- res_future$mat_year$year[res_future$mat_year$is_manage] %>% min()
   }
   period_range <- list(0:9, 0:4, 5:9, 1:10, 1:4, 6:10)
+  ss <- rep(TRUE,length(period_extra))
   if(!is.null(period_extra)){
     for(i in 1:length(period_extra)){
-      if(sum(purrr::map_lgl(period_range, function(x) all(x==period_extra[[i]])))==0){
-        period_range <- c(period_range, period_extra[i])
-      }
-    }
-  }
+      for(j in 1:length(period_range)){
+        if(length(period_extra[[i]])==length(period_range[[j]]) && all(period_extra[[i]]==period_range[[j]]))
+          ss[[i]] <- FALSE
+      }}}
+  period_range <- c(period_range, period_extra[ss])
   period_list  <- purrr::map(period_range, function(x) ABC_year + x)
   names(period_list) <- purrr::map_chr(period_list, function(x) str_c(range(x),collapse="."))
 

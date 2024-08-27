@@ -146,7 +146,7 @@ validate_sr <- function(SR = NULL, method = NULL, AR = NULL, out.AR = NULL, res_
   if (!is.null(SR)) {
     assertthat::assert_that(
       length(SR) == 1,
-      SR %in% c("HS", "BH", "RI","Mesnil")
+      SR %in% c("HS", "BH", "RI","Mesnil", "Shepherd", "Cushing","BHS")
     )
   }
   if (!is.null(method)) {
@@ -237,7 +237,8 @@ fit.SR <- function(SRdata,
                    plus_group = TRUE,
                    is_jitter = FALSE,
                    HS_fix_b = NULL,
-                   gamma=0.01
+                   gamma=0.01,
+                   bias_correct=FALSE # only for test and L2 option
 ){
   validate_sr(SR = SR, method = method, AR = AR, out.AR = out.AR)
 
@@ -262,6 +263,9 @@ fit.SR <- function(SRdata,
   if (SR=="BH") SRF <- function(x,a,b) a*x/(1+b*x)
   if (SR=="RI") SRF <- function(x,a,b) a*x*exp(-b*x)
   if (SR=="Mesnil") SRF <- function(x,a,b) 0.5*a*(x+sqrt(b^2+gamma^2/4)-sqrt((x-b)^2+gamma^2/4))
+  if (SR=="Shepherd") SRF <- function(x,a,b) a*x/(1+(b*x)^gamma)
+  if (SR=="Cushing") SRF <- function(x,a,b) a*x^b
+  if (SR=="BHS") SRF <- function(x,a,b) ifelse(x<b, a*b*(x/b)^{1-(x/b)^gamma}, a*b)
 
   if (length(SRdata$R) != length(w)) stop("The length of 'w' is not appropriate!")
 
@@ -332,11 +336,21 @@ fit.SR <- function(SRdata,
       }
 
       if (method == "L2") {
-        rss <- w[1]*resid2[1]^2*(1-rho^2)
-        for(i in 2:N) rss <- rss + w[i]*resid2[i]^2
-        sd <- sqrt(rss/NN)
-        sd2 <- c(sd/sqrt(1-rho^2), rep(sd,N-1))
-        obj <- -sum(w*dnorm(resid2,0,sd2,log=TRUE))
+        if(bias_correct==FALSE){
+          rss <- w[1]*resid2[1]^2*(1-rho^2)
+          for(i in 2:N) rss <- rss + w[i]*resid2[i]^2
+          sd <- sqrt(rss/NN)
+          sd2 <- c(sd/sqrt(1-rho^2), rep(sd,N-1))
+          obj <- -sum(w*dnorm(resid2,0,sd2,log=TRUE))
+        }
+        else{
+#          resid2 <- resid-mean(resid)
+          rss <- w[1]*resid2[1]^2*(1-rho^2)
+          for(i in 2:N) rss <- rss + w[i]*resid2[i]^2
+          sd <-  sqrt(rss/NN)
+          sd2 <- c(sd/sqrt(1-rho^2), rep(sd,N-1))          
+          obj <- -sum(w*dnorm(resid2,-0.5*sd2^2,sd2,log=TRUE))
+        }
       } else {
         rss <- w[1]*abs(resid2[1])*sqrt(1-rho^2)
         for(i in 2:N) rss <- rss + w[i]*abs(resid2[i])
@@ -346,26 +360,26 @@ fit.SR <- function(SRdata,
       }
       return(obj)
     }
-    }
+  }
 
-    if(is.null(HS_fix_b)){
+  if(is.null(HS_fix_b)){
       if (is.null(p0)) {
     a.range <- range(rec/ssb)
     b.range <- range(1/ssb)
-    if (SR == "HS" | SR=="Mesnil") b.range <- range(ssb)
+    if (SR == "HS" | SR=="Mesnil" | SR=="BHS") b.range <- range(ssb)
     grids <- as.matrix(expand.grid(
       seq(a.range[1],a.range[2],len=length),
       seq(b.range[1],b.range[2],len=length)
     ))
     init <- as.numeric(grids[which.min(sapply(1:nrow(grids),function(i) obj.f(grids[i,1],grids[i,2],0))),])
     init[1] <- log(init[1])
-    init[2] <- ifelse (SR == "HS" | SR =="Mesnil",-log(max(0.000001,(max(ssb)-min(ssb))/max(init[2]-min(ssb),0.000001)-1)),log(init[2]))
+    init[2] <- ifelse (SR == "HS" | SR =="Mesnil" | SR=="BHS",-log(max(0.000001,(max(ssb)-min(ssb))/max(init[2]-min(ssb),0.000001)-1)),log(init[2]))
     if (AR != 0 && !isTRUE(out.AR)) init[3] <- 0
   } else {
     init = p0
   }
 
-  if (SR == "HS" | SR == "Mesnil") {
+  if (SR == "HS" | SR == "Mesnil" | SR=="BHS") {
       if (AR == 0 || out.AR) {
         obj.f2 <- function(x) obj.f(exp(x[1]),min(ssb)+(max(ssb)-min(ssb))/(1+exp(-x[2])),0)
       } else {
@@ -453,6 +467,11 @@ fit.SR <- function(SRdata,
     resid2 <- NULL
     for (i in 1:N) {
       resid2[i] <- ifelse(i == 1,resid[i], resid[i]-rho*resid[i-1])
+    }
+
+    if(bias_correct==TRUE){
+      resid <- resid-mean(resid)
+      resid2 <- resid2-mean(resid2)
     }
 
     # if (method=="L2") {
@@ -1096,6 +1115,8 @@ fit.SRregime <- function(
   if (SR=="BH") SRF <- function(x,a,b) a*x/(1+b*x)
   if (SR=="RI") SRF <- function(x,a,b) a*x*exp(-b*x)
   if (SR=="Mesnil") SRF <- function(x,a,b) 0.5*a*(x+sqrt(b^2+gamma^2/4)-sqrt((x-b)^2+gamma^2/4))
+  if (SR=="Shepherd") SRF <- function(x,a,b) a*x/(1+(b*x)^gamma)
+  if (SR=="Cushing") SRF <- function(x,a,b) a*x^b
 
   obj.f <- function(a,b,out="nll"){ #a,bはベクトル
     resid <- NULL
@@ -2873,35 +2894,42 @@ check_consistent_w <- function(w, SRdata){
 #' @export
 #'
 
-tryall_SR <- function(data_SR, plus_group=TRUE, bio_par=NULL, tol=FALSE){
+tryall_SR <- function(data_SR, plus_group=TRUE, bio_par=NULL, tol=FALSE, detail=FALSE){
 
   SRmodel.list <- expand.grid(SR.rel = c("HS","BH","RI"), L.type = c("L1", "L2")) %>%
     as_tibble()
 
   if(tol==TRUE) fit.SR <- fit.SR_tol
-  SRmodel.list$pars <- purrr::map2(SRmodel.list$SR.rel, SRmodel.list$L.type,
+  allres <- purrr::map2(SRmodel.list$SR.rel, SRmodel.list$L.type,
                                    function(x,y){
-                                     res1 <- unlist(fit.SR(data_SR, SR = x, method = y,
-                                                           AR = 0, hessian = FALSE, out.AR=TRUE,
-                                                           bio_par = bio_par, plus_group = plus_group)
-                                                    [c("pars","AICc","steepness")])
+                                     tmp0 <- fit.SR(data_SR, SR = x, method = y,
+                                                    AR = 0, hessian = FALSE, out.AR=TRUE,
+                                                    bio_par = bio_par, plus_group = plus_group)
+                                     res1 <- unlist(tmp0[c("pars","AICc","steepness")])
                                      tmp <- fit.SR(data_SR, SR = x, method = y,
                                                    AR = 1, hessian = FALSE, out.AR=TRUE,
                                                    bio_par = bio_par, plus_group = plus_group)
                                      res2 <- unlist(tmp[c("pars","AICc","steepness")])
                                      res2 <- c(res2,"deltaAIC(AIC_AR-AIC_noAR)"=tmp$AIC.ar[2]-tmp$AIC.ar[1])
-                                     res3 <- unlist(fit.SR(data_SR, SR = x, method = y,
-                                                           AR = 1, hessian = FALSE, out.AR=FALSE,
-                                                           bio_par = bio_par, plus_group = plus_group)[c("pars","AICc","steepness")])
-                                     bind_rows(res1,res2,res3,.id="id")
+                                     tmp2 <- fit.SR(data_SR, SR = x, method = y,
+                                                    AR = 1, hessian = FALSE, out.AR=FALSE,
+                                                    bio_par = bio_par, plus_group = plus_group)
+                                     res3 <- unlist(tmp2[c("pars","AICc","steepness")])
+                                     list(pars=bind_rows(res1,res2,res3,.id="id"),
+                                          model=list(tmp0, tmp, tmp2))
                                    })
-
-  SRmodel.list <- SRmodel.list %>%
+  SRmodel.list$pars <- purrr::map(allres, function(x) x$pars)
+  result.list <- SRmodel.list %>%
     unnest(col=pars) %>%
-    left_join(tibble(id=as.character(1:3),AR.type=c("non","outer","inner"))) %>%
-    arrange(AICc,AR.type)
-
-  return(SRmodel.list)
+    left_join(tibble(id=as.character(1:3),AR.type=c("non","outer","inner"))) 
+  
+  if(detail==TRUE){
+   SRmodel.list <- SRmodel.list %>% mutate(model=purrr::map(allres, function(x) x$model))  %>%
+    unnest(col=model) 
+   result.list$model <- SRmodel.list$model
+  }
+  
+  return(arrange(result.list, AICc, AR.type))
 
 }
 
@@ -2975,4 +3003,139 @@ fit.SR_pen <- function(bio_par, h_upper=Inf, h_lower=0.2, plus_group=TRUE, ...){
     opt = optim(init,obj_pen)
     obj_pen(opt$par,out=TRUE)
 
+}
+
+
+#'
+#' 再生産関係のレジームシフトを隠れマルコフモデルで推定する
+#'
+#' Tang et al. (2021) ICESJMSの論文を改変
+#'
+#' @inheritParams fit.SRregime
+#' @params k_regime 推定するレジームの数（2以上の整数）
+#' @params b_range パラメータbの範囲
+#' @params p0 パラメータの初期値（リスト）
+#' @params overwrite cppファイルのコンパイルを上書きして行うか
+#' @encoding UTF-8
+#' @export
+#'
+#
+hmm_SR = function(SRdata,SR="BH",k_regime=2,gamma=0.01,b_range=NULL,p0=NULL,overwrite=FALSE,max.ssb.pred = 1.3) {
+  argname <- ls()
+  arglist <- lapply(argname,function(xx) eval(parse(text=xx)))
+  names(arglist) <- argname
+
+  k_regime<-round(k_regime)
+
+  if(k_regime<2) stop("Incorrect 'k_regime'")
+
+  data = SRdata
+  st = data$SSB
+  # st = st/(10^4)
+  yt = log(data$R/data$SSB)
+
+  SRcode = case_when(SR=="RI" ~ 1,SR=="BH" ~ 2,SR=="HS"~3,SR=="Mesnil"~4,TRUE~5)
+  if (SRcode==5) stop("SR not recognized")
+  if (is.null(b_range)) {
+    if (SRcode<3) { # Ricker or BH
+      b_range = range(1/st)
+    } else {
+      b_range = range(st)
+    }
+  }
+
+  tmb_data = list(st=st,yt=yt,
+                  alpha_u=max(yt),alpha_l=min(yt),
+                  beta_u=max(b_range),beta_l=min(b_range),
+                  sigma_u=sd(yt),SRcode=SRcode,gamma=gamma)
+
+  if (!is.null(p0)) {
+    parameters = p0
+  } else {
+    parameters = list(
+      lalpha = -log(k_regime+1-1:k_regime),
+      lbeta = rep(0,k_regime),
+      lsigma = rep(0,k_regime),
+      pi1_tran = rep(0,k_regime-1),
+      qij_tran = matrix(0,nrow=k_regime,ncol=k_regime-1)
+    )
+  }
+
+  if (overwrite==TRUE){
+    use_rvpa_tmb("HMM_SR",overwrite=TRUE)
+  }
+  if (!file.exists("HMM_SR.dll")) {
+    use_rvpa_tmb("HMM_SR")
+  }
+
+  obj = TMB::MakeADFun(tmb_data,parameters,DLL="HMM_SR",inner.control=list(maxit=50000,trace=F),silent=TRUE)
+  if (length(obj$par)>length(st)) {
+    stop("NOT estimable because k > n (k: parameter number, n: sample size")
+  }
+  opt = nlminb(obj$par,obj$fn,obj$gr,control = list(trace=10,iter.max=10000,eval.max=10000,sing.tol=1e-20))
+
+  Res = list()
+
+  Res$tmb_data = tmb_data
+  Res$p0 = parameters
+  Res$obj = obj
+  Res$opt = opt
+
+  rep = obj$report(opt$par)
+  Res$rep = rep
+
+  alpha = rep[["alpha"]]
+  a = exp(alpha)
+  b = rep[["beta"]]
+  sigma = rep[["sigma"]]
+  pars=data.frame(regime=1:length(a),a=a,b=b,sd=sigma)
+  Res$pars=pars
+  regime_prob = (rep[["r_pred"]])
+  colnames(regime_prob) = data$year
+  Res$regime_prob=round(t(regime_prob),3)
+  regime=Rfast::colMaxs(regime_prob)
+  names(regime) = data$year
+  Res$regime = regime
+  Res$trans_prob = rep[["qij"]]
+
+  Res$loglik <- loglik <- -opt$objective
+  Res$k <- k <- length(opt$par)
+  Res$AIC <- -2*loglik+2*k
+  Res$AICc <- Res$AIC+2*k*(k+1)/(length(data$year)-k-1)
+  Res$BIC <- -2*loglik+k*log(length(data$year))
+  Res$input <- arglist
+
+  # calculate residuals and predicted values
+  if (SR=="HS") SRF <- function(x,a,b) ifelse(x>b,b*a,x*a)
+  if (SR=="BH") SRF <- function(x,a,b) a*x/(1+b*x)
+  if (SR=="RI") SRF <- function(x,a,b) a*x*exp(-b*x)
+  SRFV = Vectorize(SRF,vectorize.args = "x")
+
+  pred = sapply(1:nrow(pars), function(i) {
+    regime_prob[i,] *log(SRFV(SRdata$SSB,pars$a[i],pars$b[i]))
+  }) %>% rowSums %>% exp()
+
+  pred_to_obs = SRdata %>%
+    dplyr::rename(Year=year) %>%
+    dplyr::mutate(Regime=factor(regime),
+                  Pred=pred) %>%
+    dplyr::mutate(resid=log(R/pred))
+
+  Res$pred_to_obs <- pred_to_obs
+  Res$resid <- pred_to_obs$resid
+
+  ssb.tmp <- seq(from=0,to=max(SRdata$SSB)*max.ssb.pred,length=100)
+  pred2 = sapply(1:nrow(pars), function(i) SRFV(ssb.tmp,pars$a[i],pars$b[i])) %>% as.data.frame
+  colnames(pred2) <- pars$regime
+  pred2 = pred2 %>% mutate(SSB = ssb.tmp) %>%
+    pivot_longer(., cols=-SSB,values_to="R") %>%
+    mutate(Regime=factor(name)) %>%
+    arrange(Regime,SSB) %>%
+    dplyr::select(Regime,SSB,R)
+
+  Res$pred <- pred2
+
+  class(Res) <- "hmm_SR"
+
+  return( Res )
 }

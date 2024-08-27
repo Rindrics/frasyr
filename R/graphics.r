@@ -2,13 +2,18 @@
 
 # 色や線の太さの設定・会議用の図の設定 ----
 
-col.SBtarget    <- "#00533E"
-col.SBlim       <- "#edb918"
-col.SBlimit     <- "#edb918"
-col.SBban       <- "#C73C2E"
+if(0){
+col.SBtarget    <- format_type() %>% dplyr::filter(name=="target") %>%
+  select(col) %>% unlist()
+col.SBlim       <- format_type() %>% dplyr::filter(name=="limit") %>%
+  select(col) %>% unlist()
+col.SBlim       <- col.SBlimit
+col.SBban       <- format_type() %>% dplyr::filter(name=="ban") %>%
+  select(col) %>% unlist()
 col.Ftarget     <- "#714C99"
 col.betaFtarget <- "#505596"
 pt1             <- 0.3528
+}
 
 #' 会議用の図のフォーマット
 #'
@@ -17,26 +22,17 @@ pt1             <- 0.3528
 
 theme_SH <- function(legend.position="none",base_size=12){
 
-  if(isTRUE(stringr::str_detect(version$os, pattern="darwin"))){
-    font_MAC <- "HiraginoSans-W3"#"Japan1GothicBBB"#
     theme_bw(base_size=base_size) +
       theme(panel.grid = element_blank(),
             axis.text.x=element_text(size=11,color="black"),
             axis.text.y=element_text(size=11,color="black"),
             axis.line.x=element_line(size= 0.3528),
             axis.line.y=element_line(size= 0.3528),
-            legend.position=legend.position, text =element_text(family = font_MAC) )
-  }
-  else{
-    theme_bw(base_size=base_size) +
-      theme(panel.grid = element_blank(),
-            axis.text.x=element_text(size=11,color="black"),
-            axis.text.y=element_text(size=11,color="black"),
-            axis.line.x=element_line(size= 0.3528),
-            axis.line.y=element_line(size= 0.3528),
-            legend.position=legend.position)
+            legend.position=legend.position,
+			axis.minor.ticks.length = rel(0.5))
 
-  }
+#  }
+
 }
 
 #' 会議用の図の出力関数（大きさ・サイズの指定済）：通常サイズ
@@ -67,6 +63,7 @@ ggsave_SH_large <- function(...){
 #' @param legend.position 凡例の位置。"top" (上部), "bottom" (下部), "left" (左), "right" (右), "none" (なし)。
 #' @param vpaname 凡例につけるVPAのケースの名前。vpalistと同じ長さにしないとエラーとなる
 #' @param ncol 図の列数
+#' @param is_minor_ticks 補助目盛りをつける場合はTRUE。デフォルトはTRUE
 #'
 #' @examples
 #' \dontrun{
@@ -92,7 +89,8 @@ plot_vpa <- function(vpalist,
                      legend.position = "top",
                      vpaname = NULL,
                      ncol = 2,
-                     scale_value = NULL # 浜辺加筆(2020/07/29)
+                     scale_value = NULL, # 浜辺加筆(2020/07/29)
+                     is_minor_ticks=TRUE
                      ){
 
   if(!is.null(vpaname)){
@@ -161,12 +159,27 @@ plot_vpa <- function(vpalist,
     ylab("value") + xlab("Year")+
     guides(color=guide_legend(nrow=2))
 
-  if(!(is.null(plot_year))){
+ apply_minor_ticks2 <- function(plot, minor_breaks=1){
+  plot +   # サブ目盛の設定
+    guides(x=guide_axis(minor.ticks=TRUE), # guideは凡例を制御するための関数。目盛りのスタイルを設定するのはtheme関数だが、どんな目盛りをつけるかはguidesの範疇になる？
+           y=guide_axis(minor.ticks=TRUE)) + 
+    # サブ目盛りをつけるので、目盛りの長さを少し長くし、線幅を狭くする
+    theme(axis.ticks.length=unit(0.17,"cm"), # default=unit(0.15,"cm")
+          axis.ticks=element_line(linewidth=0.4)) + # default=0.5
+    # サブ目盛りの間隔の設定
+    scale_x_continuous(limits=c(plot_year[1], max(plot_year)), minor_breaks=scales::breaks_width(minor_breaks),
+                       breaks      =scales::breaks_pretty())
+#    scale_x_continuous(minor_breaks=scales::breaks_width(minor_breaks))  
+}
+
+if(is_minor_ticks==FALSE &!(is.null(plot_year))){
     g2 <- g1 + xlim(plot_year[1], max(plot_year))
   } else {
     g2 <- g1
   } # もし動かない場合はこれまで通りに作図(浜辺'20/06/30)
 
+  if(is_minor_ticks==TRUE & is.null(plot_year)) g2 <- apply_minor_ticks(g2)
+  if(is_minor_ticks==TRUE & !(is.null(plot_year))) g2 <- apply_minor_ticks2(g2)
   g2
 }
 
@@ -317,10 +330,7 @@ plot_SRdata <- function(SRdata, type=c("classic","gg")[1]){
 #'
 #' @param SR_result fit.SRの結果のオブジェクト
 #' @param refs 管理基準値 (list(Blimit=0, Bmsy=10, Bban=0))
-#' @param
-#' @param
-#' @param
-#' @param
+#' @param last_year_color 最終年何年かのプロットの色を「赤」に変更する。０だと変更しない、正の整数を与えるとその数分だけプロットの色が変わる
 #'
 #' @encoding UTF-8
 #'
@@ -345,8 +355,7 @@ plot_SRdata <- function(SRdata, type=c("classic","gg")[1]){
 plot_SR <- function(SR_result,refs=NULL,xscale=1000,xlabel="千トン",yscale=1,ylabel="尾",
                     labeling.year=NULL,add.info=TRUE, recruit_intercept=0,
                     plot_CI=FALSE, CI=0.9, shape_custom=c(21,3),box.padding=0,
-                    add_graph=NULL){
-  font_MAC <- "HiraginoSans-W3"#"Japan1GothicBBB"#
+                    add_graph=NULL, last_year_color=0){
 
   if(is.null(refs$Blimit) && !is.null(refs$Blim)) refs$Blimit <- refs$Blim
 
@@ -354,6 +363,13 @@ plot_SR <- function(SR_result,refs=NULL,xscale=1000,xlabel="千トン",yscale=1,
   if (SR_result$input$SR=="BH") SRF <- function(SSB,a,b,recruit_intercept=0) (a*SSB*xscale/(1+b*SSB*xscale)+recruit_intercept)/yscale
   if (SR_result$input$SR=="RI") SRF <- function(SSB,a,b,recruit_intercept=0) (a*SSB*xscale*exp(-b*SSB*xscale)+recruit_intercept)/yscale
   if (SR_result$input$SR=="Mesnil") SRF <- function(SSB,a,b,gamma) (0.5*a*(SSB*xscale+sqrt(b^2+gamma^2/4)-sqrt((SSB*xscale-b)^2+gamma^2/4))+recruit_intercept)/yscale
+  if (SR_result$input$SR=="Shepherd") SRF <- function(SSB,a,b,gamma,recruit_intercept=0) (a*SSB*xscale/(1+(b*SSB*xscale)^gamma)+recruit_intercept)/yscale
+  if (SR_result$input$SR=="Cushing") SRF <- function(SSB,a,b,recruit_intercept=0) (a*(SSB*xscale)^b+recruit_intercept)/yscale
+  if (SR_result$input$SR=="BHS") SRF <- function(SSB,a,b,gamma){
+    SSB <- SSB*xscale
+    res <- ifelse(SSB < b, a*b*(SSB/b)^{1-(SSB/b)^gamma}, a*b)
+    return(res/yscale)    
+}
 
 
   SRF_CI <- function(CI,sigma,sign,...){
@@ -362,7 +378,7 @@ plot_SR <- function(SR_result,refs=NULL,xscale=1000,xlabel="千トン",yscale=1,
 
   SRdata <- as_tibble(SR_result$input$SRdata) %>%
       mutate(type="obs")
-  if(is.null(SRdata$weight)) SRdata$weight <- SR_result$input$w
+  if(!"weight" %in% colnames(SRdata)) SRdata <- SRdata %>% mutate(weight=SR_result$input$w)
   SRdata <- SRdata %>%
     mutate(weight=ifelse(weight>0, 1, 0)) %>%
     mutate(weight=factor(weight,levels=c("1","0")))
@@ -390,72 +406,53 @@ plot_SR <- function(SR_result,refs=NULL,xscale=1000,xlabel="千トン",yscale=1,
     mutate(R=R/yscale,SSB=SSB/xscale)
   ymax <- max(alldata$R)
   year.max <- max(alldata$year,na.rm=T)
-  tmp <- 1950:2030
+  tmp <- 0:3000
   if(is.null(labeling.year)) labeling.year <- c(tmp[tmp%%5==0],year.max)
-    alldata <- alldata %>% mutate(pick.year=ifelse(year%in%labeling.year,year,""))
-
-  if(SR_result$input$SR!="Mesnil"){
-    g1 <- ggplot(data=alldata,mapping=aes(x=SSB,y=R)) +
-      stat_function(fun=SRF,args=list(a=SR_result$pars$a,
-                                      b=SR_result$pars$b),color="deepskyblue3",lwd=1.3,
-                    n=5000)
-  }else{
-    g1 <- ggplot(data=alldata,mapping=aes(x=SSB,y=R)) +
-      stat_function(fun=SRF,args=list(a=SR_result$pars$a,
-                                      b=SR_result$pars$b,
-                                      gamma=SR_result$input$gamma),color="deepskyblue3",lwd=1.3,
-                    n=5000)
+  alldata <- alldata %>% mutate(pick.year=ifelse(year%in%labeling.year,year,""))
+  if(last_year_color > 0){
+    last_years <- rev(sort(unique(SRdata$year)))[1:last_year_color]
+    alldata <- alldata %>% mutate(last_years_fill =ifelse(year%in%last_years,"red","white"))
   }
+  else{
+    alldata <- alldata %>% mutate(last_years_fill="white")
+  }
+
+  use_gamma <- SR_result$input$SR %in% c("Mesnil", "Shepherd", "BHS")
+
+  args_list <- list(a=SR_result$pars$a, b=SR_result$pars$b)
+  if(use_gamma==TRUE) args_list <- args_list %>% list_modify(gamma=SR_result$input$gamma)
+
+  g1 <- ggplot(data=alldata,mapping=aes(x=SSB,y=R)) +
+    stat_function(fun=SRF,args=args_list,color="deepskyblue3",lwd=1.3,n=5000)
 
   if(!is.null(add_graph)) g1 <- g1+add_graph
 
   if(isTRUE(plot_CI)){
-    if(SR_result$input$SR!="Mesnil"){
-      g1 <- g1+
-        stat_function(fun=SRF_CI,
-                      args=list(a=SR_result$pars$a,
-                                b=SR_result$pars$b,
-                                sigma=SR_result$pars$sd,
-                                sign=-1,
-                                CI=CI),
-                      color="deepskyblue3",lty=3,n=5000)+
-        stat_function(fun=SRF_CI,
-                      args=list(a=SR_result$pars$a,
-                                b=SR_result$pars$b,
-                                sigma=SR_result$pars$sd,
-                                sign=1,
-                                CI=CI),
-                      color="deepskyblue3",lty=3,n=5000)
-    }else{
-      g1 <- g1+
-        stat_function(fun=SRF_CI,
-                      args=list(a=SR_result$pars$a,
-                                b=SR_result$pars$b,
-                                gamma=SR_result$input$gamma,
-                                sigma=SR_result$pars$sd,
-                                sign=-1,
-                                CI=CI),
-                      color="deepskyblue3",lty=3,n=5000)+
-        stat_function(fun=SRF_CI,
-                      args=list(a=SR_result$pars$a,
-                                b=SR_result$pars$b,
-                                gamma=SR_result$input$gamma,
-                                sigma=SR_result$pars$sd,
-                                sign=1,
-                                CI=CI),
-                      color="deepskyblue3",lty=3,n=5000)
-    }
+    args_list <- args_list %>% list_modify(sigma=SR_result$pars$sd, CI=CI)
+    g1 <- g1+
+      stat_function(fun=SRF_CI,
+                    args=list_modify(args_list, sign=-1),
+#                      args=list(a=SR_result$pars$a,
+#                                b=SR_result$pars$b,
+#                                sigma=SR_result$pars$sd,
+#                                sign=-1,
+#                                CI=CI),
+                    color="deepskyblue3",lty=3,n=5000)+
+      stat_function(fun=SRF_CI,
+                args=list_modify(args_list, sign=1),                
+#                      args=list(a=SR_result$pars$a,
+#                                b=SR_result$pars$b,
+#                                sigma=SR_result$pars$sd,
+#                                sign=1,
+#                                CI=CI),
+                color="deepskyblue3",lty=3,n=5000)
   }
 
-    if(!isTRUE(stringr::str_detect(version$os, pattern="darwin"))){
-  g1 <- g1+  geom_path(data=dplyr::filter(alldata,type=="obs"),
-                       aes(y=R,x=SSB),color="black") +
+  g1 <- g1+geom_path(data=dplyr::filter(alldata,type=="obs"),
+                       aes(y=R,x=SSB),color=gray(0.6)) +
     geom_point(data=dplyr::filter(alldata,type=="obs"),
-               aes(y=R,x=SSB,shape=weight),fill="white") +
+               aes(y=R,x=SSB,shape=weight, fill=last_years_fill),color="black") +
     scale_shape_manual(values = shape_custom) +
-      #    ggrepel::geom_text_repel(data=dplyr::filter(alldata,type=="obs"),
-      #                             segment.alpha=0.5,nudge_y=5,
-      #                             aes(y=R,x=SSB,label=pick.year)) +
     ggrepel::geom_text_repel(data=dplyr::filter(alldata,type=="obs"),
                              box.padding=box.padding,segment.color="gray",nudge_y=5,
                              aes(y=R,x=SSB,label=pick.year)) +
@@ -464,27 +461,8 @@ plot_SR <- function(SR_result,refs=NULL,xscale=1000,xlabel="千トン",yscale=1,
     theme(panel.grid = element_blank()) +
     xlab(str_c("親魚量 (",xlabel,")"))+
     ylab(str_c("加入量 (",ylabel,")"))+
-    coord_cartesian(ylim=c(0,ymax*1.05),expand=0)
-    }else{
-      g1 <- g1+  geom_path(data=dplyr::filter(alldata,type=="obs"),
-                           aes(y=R,x=SSB),color="black") +
-        geom_point(data=dplyr::filter(alldata,type=="obs"),
-                   aes(y=R,x=SSB,shape=weight),fill="white") +
-        scale_shape_manual(values = shape_custom) +
-        #    ggrepel::geom_text_repel(data=dplyr::filter(alldata,type=="obs"),
-        #                             segment.alpha=0.5,nudge_y=5,
-        #                             aes(y=R,x=SSB,label=pick.year)) +
-      ggrepel::geom_text_repel(data=dplyr::filter(alldata,type=="obs"),
-                               box.padding=box.padding,segment.color="gray",nudge_y=5,
-                               aes(y=R,x=SSB,label=pick.year)) +
-        theme_bw(base_size=14)+
-        theme(legend.position = 'none') +
-        theme(panel.grid = element_blank()) +
-        theme(text = element_text(family = font_MAC)) +
-        xlab(str_c("親魚量 (",xlabel,")"))+
-        ylab(str_c("加入量 (",ylabel,")"))+
-        coord_cartesian(ylim=c(0,ymax*1.05),expand=0)
-    }
+    coord_cartesian(ylim=c(0,ymax*1.05),expand=0)+
+    scale_color_identity() + scale_fill_identity()
 
   if(is_release_data){
     g1 <- g1 + geom_point(data=dplyr::filter(alldata,type=="release"),
@@ -492,7 +470,7 @@ plot_SR <- function(SR_result,refs=NULL,xscale=1000,xlabel="千トン",yscale=1,
   }
 
   if(recruit_intercept>0){
-    if(SR_result$input$SR!="Mesnil"){
+    if(!use_gamma){
       g1 <- g1+stat_function(fun=SRF,
                              args=list(a=SR_result$pars$a,
                                        b=SR_result$pars$b,
@@ -515,11 +493,7 @@ plot_SR <- function(SR_result,refs=NULL,xscale=1000,xlabel="千トン",yscale=1,
     if(sum(SRdata$weight=="0")>0) cap1 <- str_c(cap1, "\n パラメータ推定に利用（丸）,利用していない（バツ） ")
     if(is_release_data) cap1 <- str_c(cap1, "\n 灰色：放流＋天然、黒：天然のみ")
 
-    if(!isTRUE(stringr::str_detect(version$os, pattern="darwin"))){
-      g1 <- g1+labs(caption=cap1)
-    }else{
-      g1 <- g1+labs(caption=cap1,family = font_MAC)
-    }
+    g1 <- g1+labs(caption=cap1)
   }
 
   if(!is.null(refs)){
@@ -542,7 +516,8 @@ SRplot_gg <- plot.SR <- function(...){
 #' @param SRlist 再生産関係の推定結果のリスト。
 #' @param biomass.unit 資源量の単位
 #' @param number.unit 尾数の単位
-#'
+#' @param newplot なんのためのオプションか不明
+#' 
 #' @examples
 #' \dontrun{
 #' data(res_sr_HSL1)
@@ -559,8 +534,6 @@ SRplot_gg <- plot.SR <- function(...){
 #'
 
 compare_SRfit <- function(SRlist, biomass.unit=1000, number.unit=1000, newplot=TRUE, output_folder=""){
-
-  font_MAC <- "HiraginoSans-W3"#"Japan1GothicBBB"#
 
   if(newplot){
     if(!is.null(SRlist[[1]]$input)){
@@ -580,27 +553,24 @@ compare_SRfit <- function(SRlist, biomass.unit=1000, number.unit=1000, newplot=T
 
     if(is.null(SRlist)) names(SRlist) <- 1:length(SRlist)
 
-        SRpred <- purrr::map_dfr(SRlist,
+    SRpred <- purrr::map_dfr(SRlist,
                              function(x) x$pred, .id="SR_type")
-        #SRpred$再生産関係 <- as.factor(SRpred$再生産関係)
-    font_MAC <- "HiraginoSans-W3"#"Japan1GothicBBB"#
-
+    #SRpred$再生産関係 <- as.factor(SRpred$再生産関係)
     g1 <- ggplot(data=SRpred)
-    g1 <- g1 + geom_line(data=SRpred,
-                         mapping=aes(x=SSB/biomass.unit,y=R/number.unit, linetype=SR_type, col=SR_type))
-    g1 <- g1 + geom_point(data=SRdata, mapping=aes(x=SSB/biomass.unit, y=R/number.unit), color="black")
-    if(!isTRUE(stringr::str_detect(version$os, pattern="darwin"))){
-    g1 <- g1 + xlim(c(0,max(SRdata$SSB/biomass.unit))) + ylim(c(0,max(SRdata$R/number.unit))) +
-      labs(x = "親魚量（千トン）", y = "加入尾数（百万尾)") + theme_SH(legend.position="top")
-    }else{
-      g1 <- g1 + xlim(c(0,max(SRdata$SSB/biomass.unit))) + ylim(c(0,max(SRdata$R/number.unit))) +
-        labs(x = "親魚量（千トン）", y = "加入尾数（百万尾)") + theme_SH(legend.position="top")+theme(text = element_text(family = font_MAC))
+    if(!"Regime" %in% colnames(SRpred)){
+      g1 <- g1 + geom_line(data=SRpred,
+                           mapping=aes(x=SSB/biomass.unit,y=R/number.unit, linetype=SR_type, col=SR_type)) 
     }
-    #g1
-    ggsave_SH(g1, file=paste("./",output_folder,"/resSRcomp.png",sep=""))
-    g1
+    else{ # regime case
+      g1 <- g1 + geom_line(data=SRpred,
+                           mapping=aes(x=SSB/biomass.unit,y=R/number.unit, linetype=SR_type, col=SR_type, lty=Regime)) 
+    }
+    g1 <- g1 + geom_point(data=SRdata, mapping=aes(x=SSB/biomass.unit, y=R/number.unit), color="black") +
+      xlim(c(0,max(SRdata$SSB/biomass.unit))) + ylim(c(0,max(SRdata$R/number.unit))) +
+      labs(x = "親魚量（千トン）", y = "加入尾数（百万尾)") + theme_SH(legend.position="top")
   }
   else{
+    # newplot=Fがなんのためにあるのか不明・・・
     if(!is.null(SRlist[[1]]$input)){
       SRdata <- purrr::map_dfr(SRlist[], function(x){
         x$input$SRdata %>%
@@ -618,16 +588,16 @@ compare_SRfit <- function(SRlist, biomass.unit=1000, number.unit=1000, newplot=T
 
     if(is.null(SRlist)) names(SRlist) <- 1:length(SRlist)
 
-  g1 <- plot_SRdata(SRdata,type="gg")
+    g1 <- plot_SRdata(SRdata,type="gg")
 
-  SRpred <- purrr::map_dfr(SRlist,
-                           function(x) x$pred, .id="SR_type")
-  g1 <- g1+geom_line(data=SRpred,mapping=aes(x=SSB/biomass.unit,y=R/number.unit,col=SR_type)) +
-    theme(legend.position="top") +
-    xlab(str_c("SSB (x",biomass.unit,")")) +
-    ylab(str_c("Number (x",number.unit,")"))
-  g1
+    SRpred <- purrr::map_dfr(SRlist,
+                             function(x) x$pred, .id="SR_type")
+    g1 <- g1+geom_line(data=SRpred,mapping=aes(x=SSB/biomass.unit,y=R/number.unit,col=SR_type)) +
+      theme(legend.position="top") +
+      xlab(str_c("SSB (x",biomass.unit,")")) +
+      ylab(str_c("Number (x",number.unit,")"))
   }
+  return(g1)
 }
 
 #' fit.SRregimeの結果で得られた再生産関係をプロットするための関数
@@ -659,9 +629,9 @@ compare_SRfit <- function(SRlist, biomass.unit=1000, number.unit=1000, newplot=T
 #' @export
 #'
 
-SRregime_plot <- plot_SRregime <- function (SRregime_result,xscale=1000,xlabel="SSB",yscale=1,ylabel="R",
+plot_SRregime <- function (SRregime_result,xscale=1000,xlabel="SSB",yscale=1,ylabel="R",
                            labeling.year = NULL, show.legend = TRUE, legend.title = "Regime",regime.name = NULL,
-                           base_size = 16, add.info = TRUE, themeSH = FALSE) {
+                           base_size = 16, add.info = TRUE, themeSH = FALSE,last_year_color=5) {
   pred_data = SRregime_result$pred %>% mutate(Category = "Pred")
   obs_data = select(SRregime_result$pred_to_obs, -Pred, -resid) %>% mutate(Category = "Obs")
   if(!is.null(SRregime_result$input$SRdata$weight)){
@@ -670,6 +640,7 @@ SRregime_plot <- plot_SRregime <- function (SRregime_result,xscale=1000,xlabel="
     obs_data$weight <- factor(1,levels=c("0","1"))
   }
 
+  if(last_year_color>0) last_years <- rev(sort(SRregime_result$input$SRdata$year))[1:last_year_color] else last_years <- ""
   combined_data = full_join(pred_data, obs_data) %>%
     mutate(Year = as.double(Year))
   combined_data = rename(combined_data,Regime.num=Regime)
@@ -677,7 +648,8 @@ SRregime_plot <- plot_SRregime <- function (SRregime_result,xscale=1000,xlabel="
     regime.name = c(unique(as.character(combined_data$Regime.num)))
   }
   Regime <- as.character(regime.name[combined_data$Regime.num])
-  combined_data <- combined_data %>% mutate(Regime)
+  combined_data <- combined_data %>% mutate(Regime) %>%
+    mutate(fill_color=ifelse(Year%in%last_years, "red", "white"))
 
   if(prod(as.numeric(as.character(combined_data$weight)),na.rm=T)==0){
     scaleshapeval <- c(3,20)
@@ -694,26 +666,22 @@ SRregime_plot <- plot_SRregime <- function (SRregime_result,xscale=1000,xlabel="
   if (is.null(labeling.year)) labeling.year <- c(min(obs_data$Year),obs_data$Year[obs_data$Year %% 5 == 0],max(obs_data$Year))
   combined_data = combined_data %>%
     mutate(label=if_else(is.na(Year),as.numeric(NA),if_else(Year %in% labeling.year, Year, as.numeric(NA)))) %>%
-    mutate(SSB = SSB/xscale, R = R/yscale)
+    mutate(SSB = SSB/xscale, R = R/yscale) 
 
   g1 = ggplot(combined_data, aes(x=SSB,y=R,label=label)) +
     geom_path(data=dplyr::filter(combined_data, Category=="Pred"),aes(group=Regime,colour=Regime,linetype=Regime),size=2, show.legend = show.legend)+
-    geom_point(data=dplyr::filter(combined_data, Category=="Obs"),aes(group=Regime,colour=Regime,shape=Weight),size=3, show.legend = show.legend) +
+    geom_path(data=dplyr::filter(combined_data, Category=="Obs"),colour="darkgray",size=1)+
+    geom_point(data=dplyr::filter(combined_data, Category=="Obs"),aes(group=Regime,color=Regime,shape=Weight), #,fill=fill_color),
+               size=3, show.legend = show.legend,shape=21) +    
     scale_shape_manual(values = scaleshapeval) +
     scale_color_manual(values = seq(length(unique(regime.name)))) +
-    geom_path(data=dplyr::filter(combined_data, Category=="Obs"),colour="darkgray",size=1)+
+    #    scale_fill_manual(values = seq(length(unique(regime.name)))) +
+#    scale_fill_identity() +    
     xlab(xlabel)+ylab(ylabel)+
     ggrepel::geom_label_repel()+
     theme_bw(base_size=base_size)+
     coord_cartesian(ylim=c(0,max(combined_data$R)*1.05),expand=0)
-  # if (show.legend) {
-  #   if (is.null(regime.name)) {
-  #     regime.name = unique(combined_data$Regime)
-  #   }
-  #   g1 = g1 + #scale_colour_hue(name=legend.title, labels = regime.name) +
-  #     scale_linetype_discrete(name=legend.title, labels = regime.name)
-  # }
-  if(themeSH) g1 = g1 + theme_SH()
+  if(themeSH) g1 = g1 + theme_SH(legend.position="top")
   if (add.info) {
     if (is.null(SRregime_result$input$regime.year)) {
       g1 = g1 +
@@ -741,12 +709,6 @@ SRregime_plot <- plot_SRregime <- function (SRregime_result,xscale=1000,xlabel="
   g1
 }
 
-#'
-#' @export
-
-plot_SRregime <- function(...){
-  SRregime_plot(...)
-}
 
 # 将来予測用 ----
 
@@ -768,11 +730,11 @@ plot_SRregime <- function(...){
 #' @param biomass.unit 量の単位
 #' @param number.name 尾数の凡例をどのように表示するか（「億尾」とか）
 #' @param RP_name 管理基準値をどのように名前つけるか
-#' @param Btarget Btargetの値
-#' @param Blimit Blimitの値
-#' @param Bban Bbanの値
-#' @param MSY MSYの値
-#' @param Umsy  Umsyの値
+#' @param Btarget Btargetの値、設定しない場合はNA（デフォルトはNA）
+#' @param Blimit Blimitの値、設定しない場合はNA（デフォルトはNA）
+#' @param Bban Bbanの値、設定しない場合はNA（デフォルトはNA）
+#' @param MSY MSYの値、設定しない場合はNA（デフォルトはNA）
+#' @param Umsy  Umsyの値、設定しない場合はNA（デフォルトはNA）
 #' @param SPRtarget MSYのときのSPRの値
 #' @param exclude.japanese.font 日本語を図中に表示しない
 #' @param font.size フォントの大きさ
@@ -798,8 +760,8 @@ plot_futures <- function(vpares=NULL,
                          number.unit=1,
                          number.name="",
                          RP_name=c("Btarget","Blimit","Bban"),
-                         Btarget=0,Blimit=0,Bban=0,#Blow=0,
-                         MSY=0,Umsy=0,
+                         Btarget=NA,Blimit=NA,Bban=NA,#Blow=0,
+                         MSY=NA,Umsy=NA,
                          SPRtarget=NULL,
                          exclude.japanese.font=FALSE, # english version
                          average_lwd=1,
@@ -809,17 +771,10 @@ plot_futures <- function(vpares=NULL,
                          seed=1, # seed for selecting the above example
                          legend.position="top",
                          type="detail",
-                         font.size=18,
-                         ncol=3,
+                         font.size=16,
+                         ncol=3,ncol_legend=2,
                          remove.last.vpa.year = FALSE
 ){
-
-  col.SBtarget <- "#00533E"
-  col.SBlim <- "#edb918"
-  col.SBban <- "#C73C2E"
-  col.MSY <- "black"
-  col.Ftarget <- "#714C99"
-  col.betaFtarget <- "#505596"
 
   for(i in 1:length(future.list)){
     if(class(future.list[[i]])=="future_new")
@@ -858,7 +813,7 @@ plot_futures <- function(vpares=NULL,
     #    require(tidyverse,quietly=TRUE)
 
     rename_list <- tibble(stat=c("Recruitment","SSB","biomass","cbiomass","catch","beta_gamma","U","Fratio"),
-                          jstat=c(str_c("Recruits(",number_name,"fish)"),
+                          jstat=c(str_c("Recruits(",number.name,"fish)"),
                                   str_c("SB (",junit,"MT)"),
                                   str_c("Biomass (",junit,"MT)"),
                                   str_c("cBiomass (",junit,"MT)"),
@@ -892,7 +847,8 @@ plot_futures <- function(vpares=NULL,
     dplyr::filter(stat%in%rename_list$stat) %>%
     mutate(stat=factor(stat,levels=rename_list$stat)) %>%
     left_join(rename_list) %>%
-    mutate(value=value/unit)
+    mutate(value=value/unit)%>%
+    mutate(type="future")
 
   if(is.null(future.replicate)){
     set.seed(seed)
@@ -900,7 +856,8 @@ plot_futures <- function(vpares=NULL,
   }
   future.example <- future_tibble %>%
     dplyr::filter(sim%in%future.replicate) %>%
-    group_by(sim,scenario)
+    group_by(sim,scenario) %>%
+    mutate(type="example")
 
   if(is.null(maxyear)) maxyear <- max(future_tibble$year)
   if(is.null(minyear)) minyear <- min(future_tibble$year)
@@ -913,7 +870,8 @@ plot_futures <- function(vpares=NULL,
              mean=value,sim=0)%>%
       dplyr::filter(stat%in%rename_list$stat) %>%
       left_join(rename_list) %>%
-      mutate(value=value/unit,mean=mean/unit)
+      mutate(value=value/unit,mean=mean/unit) %>%
+      mutate(type="VPA")
 
     if ( isTRUE(remove.last.vpa.year) ) vpa_tb = vpa_tb %>% filter(year<max(year))
 
@@ -921,7 +879,8 @@ plot_futures <- function(vpares=NULL,
     tmp <- vpa_tb %>% group_by(stat) %>%
       summarise(value=tail(value[!is.na(value)],n=1,na.rm=T),
                 year=tail(year[!is.na(value)],n=1,na.rm=T),sim=0)
-    future.dummy <- purrr::map_dfr(future.name,function(x) mutate(tmp,scenario=x))
+    future.dummy <- purrr::map_dfr(future.name,function(x) mutate(tmp,scenario=x))%>%
+    mutate(type="future")
   }
   else{
     future.dummy <- NULL
@@ -933,15 +892,14 @@ plot_futures <- function(vpares=NULL,
   future_tibble <-
     bind_rows(future_tibble,vpa_tb,future.dummy) %>%
     mutate(stat=factor(stat,levels=rename_list$stat)) %>%
-    mutate(scenario=factor(scenario,levels=c(future.name,"VPA"))) #%>%
-  #        mutate(value=ifelse(stat%in%c("beta_gamma","U"),value,value/biomass.unit))
+    mutate(scenario=factor(scenario,levels=c(future.name,"VPA"))) 
 
   future_tibble.qt <-
-    future_tibble %>% group_by(scenario,year,stat) %>%
+    future_tibble %>% group_by(scenario,year,stat,type) %>%
     summarise(low=quantile(value,CI_range[1],na.rm=T),
               high=quantile(value,CI_range[2],na.rm=T),
               median=median(value,na.rm=T),
-              mean=mean(value))
+              mean=mean(value)) 
 
   # make dummy for y range
   dummy <- future_tibble %>% group_by(stat) %>% summarise(max=max(value)) %>%
@@ -960,24 +918,33 @@ plot_futures <- function(vpares=NULL,
   dummy     <- left_join(dummy,rename_list,by="stat") %>% dplyr::filter(!is.na(stat))
   dummy2    <- left_join(dummy2,rename_list,by="stat") %>% dplyr::filter(!is.na(stat))
 
-  if("SSB" %in% what.plot){
-    ssb_RP <- tibble(jstat = dplyr::filter(rename_list, stat == "SSB") %>%
-                       dplyr::pull(jstat),
-                     value = c(Btarget, Blimit, Bban) / biomass.unit,
-                     RP_name = RP_name)
+  # create data for reference points
+  dat_RP <- tibble(jstat=NULL, value=NULL, name=NULL)
+  if("SSB" %in% what.plot && (!is.na(Btarget) || !is.na(Blimit) || !is.na(Bban))){
+    dat_RP <- bind_rows(dat_RP, 
+                        tibble(jstat = dplyr::filter(rename_list, stat == "SSB") %>%
+                                 dplyr::pull(jstat),
+                               value = c(Btarget, Blimit, Bban) / biomass.unit,
+                               name = c("target","limit","ban"),
+                               scenario = RP_name))
   }
-  if("catch" %in% what.plot){
-    catch_RP <- tibble(jstat=dplyr::filter(rename_list, stat == "catch") %>%
-                         dplyr::pull(jstat),
-                       value=MSY/biomass.unit,
-                       RP_name="MSY")
+  if("catch" %in% what.plot && !is.na(MSY)){
+    dat_RP <- bind_rows(dat_RP,
+                        tibble(jstat=dplyr::filter(rename_list, stat == "catch") %>%
+                                 dplyr::pull(jstat),
+                               value=MSY/biomass.unit,
+                               name="MSY",
+                               scenario="MSY"))
   }
-  if("U" %in% what.plot){
-    U_RP <- tibble(jstat=dplyr::filter(rename_list, stat == "U") %>%
-                     dplyr::pull(jstat),
-                   value=Umsy,
-                   RP_name="U_MSY")
+  if("U" %in% what.plot && !is.na(Umsy)){
+    dat_RP <- bind_rows(dat_RP, 
+                        U_RP <- tibble(jstat=dplyr::filter(rename_list, stat == "U") %>%
+                                         dplyr::pull(jstat),
+                                       value=Umsy,
+                                       name="U_MSY",
+                                       scenario="U_MSY"))
   }
+  dat_RP <- dat_RP %>% mutate(type="RP")
 
   options(warn=org.warn)
 
@@ -985,96 +952,130 @@ plot_futures <- function(vpares=NULL,
       warning("average_lwd と example_width が同じ太さです. 図の脚注との整合を確認してください.")
   }
 
-  g1 <- future_tibble.qt %>% dplyr::filter(!is.na(stat)) %>%
-    ggplot()
+  # create all combined data
+  alldata <- bind_rows(future_tibble.qt, future.example) %>%
+    dplyr::filter(!is.na(stat) & year %in% minyear:maxyear) %>%
+    bind_rows(dat_RP) %>% #future_tibble.qt %>% dplyr::filter(!is.na(stat)) %>%
+    group_by(scenario) %>% mutate(scenario=factor(scenario))
+
+  # definition of colors an line type
+  ggColorHue <- function(n, l=65) {
+    hues <- seq(15, 375, length=n+1)
+    hcl(h=hues, l=l, c=100)[1:n]
+  }
+
+  all_scenario <- unique(alldata$scenario)
+  if(nrow(dat_RP)>0){
+    style_def <- tibble(scenario=all_scenario) %>%
+      left_join(dat_RP) %>%
+      left_join(format_type())
+  }
+  else{
+    style_def <- tibble(scenario=all_scenario, col=NA, lty=NA)    
+  }
+  style_def$col[style_def$scenario=="VPA"] <- "black"
+  style_def$lty[style_def$scenario=="VPA"] <- "solid"  
+  style_def$col[style_def$scenario=="MSY"] <- "#000001" # 異なるカテゴリと認識させるため、blackとは微妙に違った色にする
+  style_def$col[style_def$scenario=="U_MSY"] <- "#000002" # 異なるカテゴリと認識させるため、blackとは微妙に違った色にする
+  style_def$lty[style_def$scenario=="MSY"] <- "dashed" # blackとは微妙に違った色にする
+  style_def$lty[style_def$scenario=="U_MSY"] <- "dashed" # blackとは微妙に違った色にする  
+  tmp <- which(is.na(style_def$col))
+  style_def$col[tmp] <- ggColorHue(n=length(tmp))
+  style_def$lty[tmp] <- "solid"
+  
+  alldata <- alldata %>% left_join(style_def %>% select(scenario, col, lty))
+
+  g1 <- alldata %>% ggplot() # aes(color=scenario, lty=scenario) とここで一括して指定すればよさげに思えるがそうするとうまくいかない
 
   if(isTRUE(is.plot.CIrange)){
+    # draw prediction interval    
     if (isTRUE(is.plot.CIline)) {
       g1 <- g1+
-        geom_line(data=dplyr::filter(future_tibble.qt,!is.na(stat) & scenario!="VPA" & year %in% minyear:maxyear),
-                  mapping=aes(x=year,y=high,lty=scenario,color=scenario))+
-        geom_line(data=dplyr::filter(future_tibble.qt,!is.na(stat) & scenario!="VPA" & year %in% minyear:maxyear),
-                  mapping=aes(x=year,y=low,lty=scenario,color=scenario))
+        geom_line(data=. %>% dplyr::filter(type=="future"),
+                  mapping=aes(x=year,y=high,lty=lty,color=col,group=scenario))+
+        geom_line(data=. %>% dplyr::filter(type=="future"),
+                  mapping=aes(x=year,y=low,lty=lty,color=col, group=scenario))
     }
+    # draw future projection results
     g1 <- g1 +
-      geom_ribbon(data=dplyr::filter(future_tibble.qt,!is.na(stat) & scenario!="VPA" & year %in% minyear:maxyear),
-                  mapping=aes(x=year,ymin=low,ymax=high,fill=scenario),alpha=0.4)+
-      geom_line(data=dplyr::filter(future_tibble.qt,!is.na(stat) & scenario!="VPA" & year %in% minyear:maxyear),
-                mapping=aes(x=year,y=mean,color=scenario),lwd=average_lwd)
+      geom_ribbon(data=. %>% dplyr::filter(type=="future"),
+                  mapping=aes(x=year,ymin=low,ymax=high,fill=col),alpha=0.4)+
+      geom_line(data= . %>% dplyr::filter(type=="future"),
+                mapping=aes(x=year,y=mean,color=col),lwd=average_lwd,lty=1)
   }
-  #    else{
-  #        g1 <- g1+
-  #            geom_line(data=dplyr::filter(future_tibble.qt,!is.na(stat) & scenario=="VPA"),
-  #                      mapping=aes(x=year,y=mean,color=scenario),lwd=1)#+
-  #    }
 
+  # apply dummy data
   g1 <- g1+
     geom_blank(data=dummy,mapping=aes(y=value,x=year))+
     geom_blank(data=dummy2,mapping=aes(y=value,x=year))+
-    #theme_bw(base_size=font.size) +
-    #        coord_cartesian(expand=0)+
-    scale_y_continuous(expand=expansion(mult=c(0,0.05)))+
+    scale_y_continuous(expand=expand_scale(mult=c(0,0.05)),labels = scales::comma)+
     facet_wrap(~factor(jstat,levels=rename_list$jstat),scales="free_y",ncol=ncol)+
-    xlab("年")+ylab("")+ labs(fill = "",linetype="",color="")+
     xlim(minyear,maxyear)
 
-  if("SSB" %in% what.plot){
-    g1 <- g1 + geom_hline(data = ssb_RP,
-                          aes(yintercept = value, linetype = RP_name),
-                          color = c(col.SBtarget, col.SBlim, col.SBban))
+  # draw reference points
+  if(nrow(dat_RP)>0){
+    g1 <- g1 + geom_hline(data = . %>% dplyr::filter(type=="RP"),
+                          aes(yintercept = value, lty=lty, color=col))
   }
 
-  if("catch" %in% what.plot){
-    g1 <- g1 + geom_hline(data = catch_RP,
-                          aes(yintercept = value, linetype = RP_name),
-                          color = c(col.MSY))
-  }
-
-  if("U" %in% what.plot){
-    g1 <- g1 + geom_hline(data = U_RP,
-                          aes(yintercept = value, linetype = RP_name),
-                          color = c(col.MSY))
-  }
-
+  # draw examples
   if(n_example>0){
-      if(n_example>1){
-        tmpdata <- dplyr::filter(future.example,year <= maxyear)
-        g1 <- g1 + geom_line(data=tmpdata,
+    if(n_example>1){
+      g1 <- g1 + geom_line(data=. %>% dplyr::filter(type=="example"),
                            mapping=aes(x=year,y=value,
-                                       alpha=as.factor(sim),
-                                       color=scenario),
+                                       alpha=factor(sim),
+                                       color=col),
                            lwd=example_width)
     }
     else{
-      g1 <- g1 + geom_line(data=dplyr::filter(future.example,year %in% minyear:maxyear),
+      g1 <- g1 + geom_line(data=. %>% dplyr::filter(type=="example"),
                            mapping=aes(x=year,y=value,
-                                       color=scenario),
+                                       color=col),
                            lwd=example_width)
     }
     g1 <- g1+scale_alpha_discrete(guide="none")
   }
 
-  caption_string <- str_c("(塗り:", CI_range[1]*100,"-",CI_range[2]*100,
-                         "%予測区間, ",
+  if(!exclude.japanese.font){
+    caption_string <- str_c("(塗り:", CI_range[1]*100,"-",CI_range[2]*100,
+                          "%予測区間, ",
                          ifelse(average_lwd < example_width, "細い", "太い"),
                          "実線: 平均値",
                          dplyr::case_when(n_example>0 & example_width < average_lwd ~ ", 細い実線: シミュレーションの1例)",
                                           n_example>0 & example_width > average_lwd ~ ", 太い実線: シミュレーションの1例)",
                                           n_example>0 & example_width == average_lwd ~ ", 薄い実線: シミュレーションの1例)",
                                           TRUE ~ ")"))
-
-  g1 <- g1 + guides(lty=guide_legend(ncol=3),
-                    fill=guide_legend(ncol=3),
-                    col=guide_legend(ncol=3))+
-    theme_SH(base_size=font.size,legend.position=legend.position)+
-    scale_color_hue(l=40)+
-    labs(caption = caption_string)
+  }
+  else{
+    caption_string <- str_c("(Fill:", CI_range[1]*100,"-",CI_range[2]*100,
+                          "%prediction interval, ",
+                         ifelse(average_lwd < example_width, "thin", "thick"),
+                         "sold line: average",
+                         dplyr::case_when(n_example>0 & example_width < average_lwd ~ ", thin solid line: an example in the simulation)",
+                                          n_example>0 & example_width > average_lwd ~ ", bold solid line: an example in the simulation)",
+                                          n_example>0 & example_width == average_lwd ~ ", pale solid line: an example in the simulation)",
+                                          TRUE ~ ")"))
+  }
 
   g1 <- g1 +
-    geom_line(data=dplyr::filter(future_tibble.qt,!is.na(stat) & scenario=="VPA"),
-              mapping=aes(x=year,y=mean),lwd=1,color="black")# VPAのプロット
+    geom_line(data=. %>% dplyr::filter(scenario=="VPA"),
+              mapping=aes(x=year, y=mean, color=col, lty=lty),lwd=1) # VPAのプロット
+
+  # setting scales and guides
+  g1 <- g1 + 
+    theme_SH(base_size=font.size,legend.position=legend.position)+
+    theme(legend.key.width=unit(1.2,"cm")) +    
+    scale_color_identity(guide="legend", labels=style_def$scenario, breaks=style_def$col) +
+    scale_linetype_identity() +
+    scale_fill_identity(guide="legend", labels=style_def$scenario, breaks=style_def$col)+
+    guides(color=guide_legend(ncol=ncol_legend,
+                              override.aes=list(linetype=style_def$lty, color=style_def$col, lwd=0.7)),
+           lty="none", fill=guide_legend(ncol=1)) +
+  xlab("年")+ylab("") + labs(fill = "",linetype="",color="")
+  
   return(g1)
 }
+
 
 #' 複数の将来予測の結果をプロットする（ggplotは使わず）
 #'
@@ -1300,7 +1301,7 @@ plot_yield <- function(MSY_obj,refs_base,
 
   g1 <- trace %>%
     ggplot2::ggplot()
-
+ 
   if(is.null(future.name)) future.name <- 1:length(future)
 
   if(is.null(refs.label)) {
@@ -1318,13 +1319,19 @@ plot_yield <- function(MSY_obj,refs_base,
     mutate(age=as.numeric(as.character(age)))
   age.label <- age.label %>%
     mutate(age_name=str_c(age,ifelse(age.label$age==max(age.label$age),plus.char,""),"歳"))
-
-  g1 <- g1 + geom_area(aes(x=ssb.mean,y=value,fill=`年齢`),col="black",alpha=0.5,lwd=1*0.3528) +
+  
+  legend.labels <- as.vector(age.label$age_name)
+  
+  nb.cols <- length(unique(trace$age)) # 年齢グループが多い場合に対応できるように変更
+   mycolors <- grDevices::colorRampPalette(c("#F7FBFF", "#DEEBF7", "#C6DBEF", "#9ECAE1", "#6BAED6", "#4292C6",
+"#2171B5", "#084594"))(nb.cols)
+  
+  g1 <- g1 + geom_area(aes(x=ssb.mean,y=value,fill=`年齢`),col="black",alpha=0.5,lwd=1*0.3528,stat="identity") +
     #    geom_line(aes(x=ssb.mean,y=catch.CV,fill=age)) +
     #    scale_y_continuous(sec.axis = sec_axis(~.*5, name = "CV catch"))+
-    scale_fill_brewer() +
+    scale_fill_manual(values=mycolors,labels=rev(legend.labels)) +
     theme_bw() +
-    theme(legend.position = 'none') +
+    #theme(legend.position = 'none') +
     #    geom_point(data=refs_base,aes(y=Catch,x=SSB,shape=refs.label,color=refs.label),size=4)+
     #形は塗りつぶしができる形にすること
     scale_shape_manual(values = c(21, 24,5,10)) +
@@ -1333,10 +1340,10 @@ plot_yield <- function(MSY_obj,refs_base,
     theme(panel.grid = element_blank(),axis.text=element_text(color="black")) +
     coord_cartesian(xlim=c(0,xmax*xlim.scale),
                     ylim=c(0,ymax*ylim.scale),expand=0) +
-    geom_text(data=age.label,
-              mapping = aes(y = cumcatch, x = ssb.mean, label = age_name)#,
+    #geom_text(data=age.label,
+     #         mapping = aes(y = cumcatch, x = ssb.mean, label = age_name)#,
               #                            family = family
-    ) +
+    #) +
     #    geom_text_repel(data=refs_base,
     #                     aes(y=Catch,x=SSB,label=refs.label),
     #                     size=4,box.padding=0.5,segment.color="gray",
@@ -1414,7 +1421,7 @@ plot_yield <- function(MSY_obj,refs_base,
 
   if(isTRUE(lining)){
     #        ylim.scale.factor <- rep(c(0.94,0.97),ceiling(length(refs.label)/2))[1:length(refs.label)]
-    g1 <- g1 + geom_vline(xintercept=refs_base$SSB,lty="41",lwd=0.6,color=refs.color)+
+    g1 <- g1 + geom_vline(xintercept=refs_base$SSB,lty=c(unlist(format_type()[1,3]),unlist(format_type()[2,3]),unlist(format_type()[3,3])),lwd=0.6,color=refs.color)+
       ggrepel::geom_label_repel(data=refs_base,
                                 aes(y=ymax*ylim.scale*0.85,
                                     x=SSB,label=refs.label),
@@ -1526,7 +1533,7 @@ plot_kobe_gg <- plot_kobe <- function(FBdata=NULL,
 
   max.B <- max(c(FBdata$Bratio,xscale),na.rm=T)
   max.F <- max(c(FBdata$Fratio,yscale),na.rm=T)
-
+  
   red.color <- "indianred1" # rgb(238/255,121/255,72/255)
   yellow.color <- "khaki1" # rgb(245/255,229/255,107/255)
   green.color <- "olivedrab2" # rgb(175/255,209/255,71/255) #"olivedrab2"#rgb(58/255,180/255,131/255)
@@ -1548,12 +1555,12 @@ plot_kobe_gg <- plot_kobe <- function(FBdata=NULL,
                              y=c(-1,-1,1,1)),aes(x=x,y=y),fill=yellow.color)
 
   if(write.vline){
-    g4 <- g4 + geom_vline(xintercept=c(1,limit.ratio,ban.ratio),color=refs.color,lty="41",lwd=0.7)+
+    g4 <- g4 + geom_vline(xintercept=c(1,limit.ratio,ban.ratio),color=refs.color,lty=c(unlist(format_type()[1,3]),unlist(format_type()[2,3]),unlist(format_type()[3,3])),lwd=0.7)+
       ggrepel::geom_label_repel(data=tibble(x=c(1,limit.ratio,ban.ratio),
                                             y=max.F*0.85,
                                             label=RP.label),
                                 aes(x=x,y=y,label=label),
-                                direction="x",nudge_y=max.F*0.9,size=11*0.282)
+                                direction="x",nudge_y=max.F*0.2,size=11*0.282)
   }
 
   if(!is.null(beta)){
@@ -1639,9 +1646,9 @@ plot_HCR <- function(SBtarget,SBlim,SBban,Ftarget,
   #Drawing of the funciton by ggplot2
   ggplct <- ggplot(data.frame(x = c(0,1.5*SBtarget),y= c(0,1.5*Ftarget)), aes(x=x)) +
     stat_function(fun = h,lwd=1.5,color=col.multi2currf, n=5000)
-  g <- ggplct  + geom_vline(xintercept = SBtarget, size = 0.9, linetype = "41", color = col.SBtarget) +
-    geom_vline(xintercept = SBlim, size = 0.9, linetype = "41", color = col.SBlim) +
-    geom_vline(xintercept = SBban, size = 0.9, linetype = "41", color = col.SBban) +
+  g <- ggplct  + geom_vline(xintercept = SBtarget, size = 0.9, linetype = unlist(format_type()[1,3]), color = col.SBtarget) +
+    geom_vline(xintercept = SBlim, size = 0.9, linetype = unlist(format_type()[2,3]), color = col.SBlim) +
+    geom_vline(xintercept = SBban, size = 0.9, linetype = unlist(format_type()[3,3]), color = col.SBban) +
     geom_hline(yintercept = Ftarget, size = 0.9, linetype = "43", color = col.Ftarget) +
     geom_hline(yintercept = beta*Ftarget, size = 0.7, linetype = "43", color = col.betaFtarget) +
     labs(x = str_c("親魚量 (",junit,"トン)"),y = "漁獲圧の比(F/Fmsy)",color = "") +
@@ -1659,7 +1666,7 @@ plot_HCR <- function(SBtarget,SBlim,SBban,Ftarget,
     RPdata <- tibble(RP.label=RP.label, value=c(SBtarget, SBlim, SBban), y=c(1.1,1.05,1.05))
     g <- g + ggrepel::geom_label_repel(data=RPdata,
                                        mapping=aes(x=value, y=y, label=RP.label),
-                                       box.padding=0.5, nudge_y=1) +
+                                       box.padding=0.5, nudge_y=0.05) +
       geom_label(label="Fmsy", x=SBtarget*1.3, y=Ftarget)+
       geom_label(label=str_c(beta,"Fmsy"), x=SBtarget*1.3, y=beta*Ftarget)+
       ylim(0,1.3)
@@ -1753,9 +1760,9 @@ plot_HCR_by_catch <- function(trace,
     ggplot()+
     geom_line(aes(x=ssb.mean/biomass.unit,y=catch_HCR/biomass.unit),lwd=1)+
     theme_SH()+
-    geom_vline(xintercept = SBtarget/biomass.unit, size = 0.9, linetype = "41", color = col.SBtarget) +
-    geom_vline(xintercept = SBlim/biomass.unit, size = 0.9, linetype = "41", color = col.SBlim) +
-    geom_vline(xintercept = SBban/biomass.unit, size = 0.9, linetype = "41", color = col.SBban) +
+    geom_vline(xintercept = SBtarget/biomass.unit, size = 0.9, linetype = unlist(format_type()[1,3]), color = col.SBtarget) +
+    geom_vline(xintercept = SBlim/biomass.unit, size = 0.9, linetype = unlist(format_type()[2,3]), color = col.SBlim) +
+    geom_vline(xintercept = SBban/biomass.unit, size = 0.9, linetype = unlist(format_type()[3,3]), color = col.SBban) +
     #      geom_hline(yintercept = MSY/biomass.unit,color="gray")+
     xlab(str_c("親魚量 (",junit,"トン)"))+
     ylab(str_c("漁獲量 (",junit,"トン)"))
@@ -2113,4 +2120,108 @@ plot_worm <- function(kobe_data){
 
     g_worm
 
+}
+
+#'
+#' サブ目盛りの追加
+#'
+#' 将来予測の図に最適化された設定です
+#' 
+#' @export
+#' 
+
+apply_minor_ticks <- function(plot, minor_breaks=1){
+  plot +   # サブ目盛の設定
+    guides(x=guide_axis(minor.ticks=TRUE), # guideは凡例を制御するための関数。目盛りのスタイルを設定するのはtheme関数だが、どんな目盛りをつけるかはguidesの範疇になる？
+           y=guide_axis(minor.ticks=TRUE)) + 
+    # サブ目盛りをつけるので、目盛りの長さを少し長くし、線幅を狭くする
+    theme(axis.ticks.length=unit(0.17,"cm"), # default=unit(0.15,"cm")
+          axis.ticks=element_line(linewidth=0.4)) + # default=0.5
+    # サブ目盛りの間隔の設定
+    scale_x_continuous(minor_breaks=scales::breaks_width(minor_breaks),
+                       breaks      =scales::breaks_pretty())
+#    scale_x_continuous(minor_breaks=scales::breaks_width(minor_breaks))  
+}
+
+#'
+#' モデル平均の場合の再生産関係のプロット
+#'
+#' 汎用化していない（２つのモデルの平均の場合だけです）
+#' 
+#' @export
+#' 
+
+plot_SRaverage <- function(data_future_MSY, res_vpa_updated, SR_plot_label, CI=0.9, last_year_color=5){
+    weight     <- data_future_MSY$input$model_average_option$weight
+    res_SR_MSY   <- data_future_MSY$input$model_average_option$SR_list
+    # モデル平均の再生産関係は関数化していない。以下の記述は汎用的でない。
+    n <- 100000
+    weight_number <- arrange_weight(round(weight,2),n)
+    ssb_vector <- seq(from=0,to=max(res_SR_MSY[[1]]$input$SRdata$SSB) * 1.2,length=100)
+    sd_vector <- c(sqrt((res_SR_MSY[[1]]$pars$sd)^2/(1-res_SR_MSY[[1]]$pars$rho^2)),
+                   sqrt((res_SR_MSY[[2]]$pars$sd)^2/(1-res_SR_MSY[[2]]$pars$rho^2)))
+    rec_expect <- NULL
+    set.seed(1)
+    probs.tmp <- c((1-CI)/2,0.5,1-(1-CI)/2)
+    for(i in 1:length(ssb_vector)){
+      rand_error1 <- rnorm(n,-0.5*sd_vector[1]^2,sd_vector[1])
+      rand_error2 <- rnorm(n,-0.5*sd_vector[2]^2,sd_vector[2])
+      fun1 <- get(str_c("SRF_",res_SR_MSY[[1]]$input$SR))
+      fun2 <- get(str_c("SRF_",res_SR_MSY[[2]]$input$SR))      
+      fun1_dist <- fun1(a=res_SR_MSY[[1]]$pars$a,b=res_SR_MSY[[1]]$pars$b,x=ssb_vector[i])*exp(rand_error1)
+      fun2_dist <- fun2(a=res_SR_MSY[[2]]$pars$a,b=res_SR_MSY[[2]]$pars$b,x=ssb_vector[i])*exp(rand_error2)
+      dist_tmp <- c(fun1_dist[weight_number[[1]]],fun2_dist[weight_number[[2]]])
+      rec_expect <- bind_rows(rec_expect,
+                              c("mean"= mean(dist_tmp),quantile( dist_tmp,probs=probs.tmp),scenario=1,ssb=ssb_vector[i]),
+                              c("mean"=mean(fun1_dist),quantile(fun1_dist,probs=probs.tmp),scenario=2,ssb=ssb_vector[i]),
+                              c("mean"=mean(fun2_dist),quantile(fun2_dist,probs=probs.tmp),scenario=3,ssb=ssb_vector[i]))
+    }
+
+    names(rec_expect)[c(2:4)] <- c("L5per","Median","H5per")
+
+    rec_expect <- rec_expect %>%
+      mutate(SR_model = case_when(scenario==1~"(c) Average",
+                                  scenario==2~str_c("(b) ",res_SR_MSY[[1]]$input$SR),
+                                  scenario==3~str_c("(a) ", res_SR_MSY[[2]]$input$SR))) %>%
+      mutate(SR_model = factor(SR_model))
+
+    if(is.null(is.null(res_SR_MSY[[1]]$input$SRdata$weight))){
+      SRdata_old <- tibble(res_SR_MSY[[1]]$input$SRdata,weight=res_SR_MSY[[1]]$input$w)
+    }else{
+      SRdata_old <- tibble(res_SR_MSY[[1]]$input$SRdata)
+    }
+    SRdata_old <- SRdata_old %>% dplyr::filter(weight>0)
+
+    if(last_year_color>0) last_years <- rev(sort(SRdata$year))[1:last_year_color] else last_years <- ""
+    SRdata <- get.SRdata(res_vpa_updated,return.df=TRUE) %>%
+      mutate(fill_color=ifelse(year%in%last_years, "red", "white"))
+    glist <- list()
+    for(i in 1:2){
+      glist[[i]] <- rec_expect %>% ggplot() +
+        geom_ribbon(data=dplyr::filter(rec_expect,SR_model=="(c) Average"),
+                    aes(x=ssb,ymin=L5per,ymax=H5per),fill="gray",alpha=0.7)
+      if(i==1) glist[[i]] <- glist[[i]] + geom_point(data=SRdata_old,mapping=aes(x=SSB,y=R),color="#92D050",shape=21,size=4,fill="#92D050")
+      glist[[i]] <- glist[[i]] +
+        geom_line(data=dplyr::filter(rec_expect,SR_model!="(c) Average"),
+                  aes(x=ssb,y   =L5per,color=SR_model,lty=SR_model),size=0.5)+
+        geom_line(data=dplyr::filter(rec_expect,SR_model!="(c) Average"),
+                  aes(x=ssb,y   =H5per,color=SR_model,lty=SR_model),size=0.5)+
+        geom_line(aes(x=ssb,y   =Median ,color=SR_model, lty=SR_model),size=1) +
+        theme_SH() + #facet_wrap(.~SR_model)
+        scale_color_hue(l=40) +
+        ylab("加入量（100万尾）") + xlab("親魚量(トン)") +
+        geom_path(data=SRdata,mapping=aes(x=SSB,y=R),color=1)+
+        geom_point(data=SRdata,mapping=aes(x=SSB,y=R,fill=fill_color),color=1,shape=21)+
+        scale_color_manual(values=c("darkgreen","darkred",1))+
+        scale_linetype_manual(values=c(2,3,1))+
+        ggrepel::geom_text_repel(data=dplyr::filter(SRdata,year%in%SRplot_label_year),
+                                 segment.alpha=0.5,nudge_y=5,
+                                 aes(y=R,x=SSB,label=year))+
+        coord_cartesian(xlim=c(0,max(SRdata_old$SSB))) +
+        scale_x_continuous(labels = scales::comma, expand=expansion(mult=c(0, 0.05)))+
+        scale_y_continuous(labels = scales::comma, expand=expansion(mult=c(0, 0.05)))+
+        scale_fill_identity()
+    }
+
+    return(glist)
 }

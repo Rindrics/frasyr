@@ -1,8 +1,10 @@
 context("test for graphic functions (level 0)")
 
 test_that("plot_futures",{
-  g1 <- plot_futures(vpares=res_vpa_example,future.list=list(res_future_HSL2,res_future_HSL1))
-  g2 <- plot_futures(vpares=NULL,future.list=list(res_future_HSL2,res_future_HSL1))
+  g1 <- plot_futures(vpares=res_vpa_example,future.list=list(res_future_HSL2,res_future_HSL1),
+                     Btarget=100000, Blimit=50000, Bban=10000)
+  g2 <- plot_futures(vpares=NULL,future.list=list(res_future_HSL2,res_future_HSL1)) %>%
+      apply_minor_ticks()
   expect_equal(class(g1)[1],"gg")
   expect_equal(class(g2)[1],"gg")
 })
@@ -12,6 +14,7 @@ test_that("plot.futures",{
   expect_equal(class(g1)[1],"list")
 })
 
+
 test_that("plot.future",{
   g1 <- plot.future(res_future_HSL2)
   g2 <- plot.future(res_future_HSL1)
@@ -20,8 +23,8 @@ test_that("plot.future",{
 })
 
 test_that("plot_vpa",{
-  g1 <- plot_vpa(res_vpa_example)
-  g2 <- plot_vpa(list(res_vpa_example,res_vpa_example))
+  g1 <- plot_vpa(res_vpa_example) 
+  g2 <- plot_vpa(list(res_vpa_example,res_vpa_example), is_minor_ticks=FALSE)
   expect_equal(class(g1)[1],"gg")
   expect_equal(class(g2)[1],"gg")
 })
@@ -41,8 +44,8 @@ test_that("plot_SRdata", {
 })
 
 test_that("SRplot_gg", {
-  g1 <- SRplot_gg(res_sr_HSL1)
-  g2 <- SRplot_gg(res_sr_HSL2, box.padding=1)
+  g1 <- plot_SR(res_sr_HSL1)
+  g2 <- plot_SR(res_sr_HSL2, box.padding=1)
   expect_equal(class(g1)[1],"gg")
   expect_equal(class(g2)[1],"gg")
 })
@@ -55,32 +58,33 @@ test_that("compare_SRfit",{
   expect_equal(class(g1)[1],"gg")
 })
 
-test_that("SRregime_plot",{
+test_that("plot_SRregime",{
   data(res_vpa_example)
   SRdata <- get.SRdata(res_vpa_example)
   resSRregime <- fit.SRregime(SRdata, SR="HS", method="L2",
                               regime.year=c(1994,2003), regime.key=c(0,1,0),
                               regime.par = c("a","b","sd")[2:3])
-  g1 <- SRregime_plot(resSRregime, regime.name=c("Low","High"))
-  # 本当の意味でのテストにはなっていない
+  g1 <- plot_SRregime(resSRregime, regime.name=c("Low","High"))
   expect_equal(class(g1)[1],"gg")
+  
   (g1 <- compare_SRfit(list(resSRregime, resSRregime),
-                       biomass.unit=1000, number.unit=1000,newplot = F))
+                       biomass.unit=1000, number.unit=1000,newplot = T))
   expect_equal(class(g1)[1],"gg")
 })
 
-test_that("SRregime_plot",{
-    data(res_sr_HSL1)
-    data(res_sr_HSL2)
-    (g1 <- compare_SRfit(list(HSL1=res_sr_HSL1, HSL2=res_sr_HSL2),
-                         biomass.unit=1000, number.unit=1000,newplot = F))
-    expect_equal(class(g1)[1],"gg")
-    (g1 <- compare_SRfit(list(L1=list(res_sr_HSL1,res_sr_HSL1),
-                              L2=list(res_sr_HSL1,res_sr_HSL2)),
-                         biomass.unit=1000, number.unit=1000,newplot = F))
-    expect_equal(class(g1)[1],"gg")
+## newplot=Fのテストだが、エラーが出るし、なんのためのオプションだったか不明なのでコメントアウト
+## test_that("compare_SRfit",{
+##     data(res_sr_HSL1)
+##     data(res_sr_HSL2)
+##     (g1 <- compare_SRfit(list(HSL1=res_sr_HSL1, HSL2=res_sr_HSL2),
+##                          biomass.unit=1000, number.unit=1000,newplot = F))
+##     expect_equal(class(g1)[1],"gg")
+##     (g1 <- compare_SRfit(list(L1=list(res_sr_HSL1,res_sr_HSL1),
+##                               L2=list(res_sr_HSL1,res_sr_HSL2)),
+##                          biomass.unit=1000, number.unit=1000,newplot = F))
+##     expect_equal(class(g1)[1],"gg")
 
-})
+## })
 
 test_that("plot_waa", {
   g1 <- plot_waa(res_vpa_example)

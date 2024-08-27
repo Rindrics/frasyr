@@ -31,10 +31,11 @@
 #' @param HCR_beta_year betaを年によって変える場合。tibble(year=2020:2024, beta=c(1.3,1.2,1.1,1,0.9))　のようにtibble形式で与える。HCR_betaで設定されたbetaは上書きされる。
 #' @param HCR_Blimit_year Blimitを年によって変える場合。tibble(year=2020:2024, Blimit=c(1.3,1.2,1.1,1,0.9))　のようにtibble形式で与える。HCR_Blimitで設定されたBlimitは上書きされる。
 #' @param HCR_Bban_year Bbanを年によって変える場合。tibble(year=2020:2024, Bban=c(1.3,1.2,1.1,1,0.9))　のようにtibble形式で与える。HCR_Bbanで設定されたBbanは上書きされる。
-#' @param HCR_TAC_reserve_rate TACの取り残し率
-#' @param HCR_TAC_carry_rate TACの何％まで持ち越せるか
-#' @param HCR_TAC_reserve_amount その年の総漁獲可能量に対する獲り残し量
-#' @param HCR_TAC_carry_amount 当初TACのうち何トンまで持ち越せるか
+#' @param HCR_TAC_reserve_rate TACの取り残し率。マイナス値を入れれば前借りもできる。
+#' @param HCR_TAC_reserve_amount TACの獲り残し量。マイナス値を入れれば前借りもできる。rateとamountの片方どちらかだけ設定する
+#' @param HCR_reserve_denom 比率で取り残し量を決める場合、もともとのABCをもとにするか（"original_ABC"、ブリ・マダラ繰越前借り設定）前年からの繰越も考慮したABCをもとにするか（"original_ABC_plus", スケトウ繰越設定）
+#' @param HCR_TAC_carry_rate 当初TACのうち何トンまで持ち越せるかの上限（比率）。マイナス値を入れれば前借りもできる。
+#' @param HCR_TAC_carry_amount 当初TACのうち何トンまで持ち越せるかの上限（比率）。マイナス値を入れれば前借りもできる。
 #' @param HCR_TAC_upper_CV 漁獲量が前年の漁獲量のHCR_TAC_upper_CV倍と比較し、それよりも変化が大きい場合には前年の漁獲量xHCR_TAC_upper_CVを上限とする。単一の値か、tibble形式 tibble(year=2020:2024, TAC_upper_CV=rep(0.1,5)) で与える
 #' @param HCR_TAC_lower_CV 漁獲量が前年の漁獲量のHCR_TAC_lower_CV倍と比較し、それよりも変化が大きい場合には前年の漁獲量xHCR_TAC_lower_CVを下限とする。単一の値か、tibble形式 tibble(year=2020:2024, TAC_lower_CV=rep(0.1,5)) で与える
 #' @param Pope 漁獲方程式にPopeの近似式を使うかどうか。与えない場合には、VPAのオプションが引き継がれる
@@ -107,6 +108,7 @@ make_future_data <- function(res_vpa,
                              HCR_TAC_upper_CV=NA,
                              HCR_TAC_lower_CV=NA,
                              HCR_function_name="HCR_default",
+                             HCR_reserve_denom="original_ABC_plus",
                              # Other
                              Pope=res_vpa$input$Pope,
                              fix_recruit=NULL, # list(year=2020, rec=1000)
@@ -116,6 +118,8 @@ make_future_data <- function(res_vpa,
                              # SR setting
                              res_SR=NULL,
                              seed_number=1,
+                             scale_ssb=1,
+                             scale_R=1,                             
                              resid_type="lognormal", # or resample or backward
                              bias_correction=TRUE,
                              resample_year_range=NA, # only when "resample" or backward
@@ -134,18 +138,18 @@ make_future_data <- function(res_vpa,
   input <- lapply(argname,function(x) eval(parse(text=x)))
   names(input) <- argname
 
-  if(!is.na(HCR_TAC_reserve_rate  )) assertthat::assert_that(min(HCR_TAC_reserve_rate  ) >= 0)
-  if(!is.na(HCR_TAC_carry_rate    )) assertthat::assert_that(min(HCR_TAC_carry_rate    ) >= 0)
-  if(!is.na(HCR_TAC_reserve_amount)) assertthat::assert_that(min(HCR_TAC_reserve_amount) >= 0)
-  if(!is.na(HCR_TAC_carry_amount  )) assertthat::assert_that(min(HCR_TAC_carry_amount  ) >= 0)
+#  if(!is.na(HCR_TAC_reserve_rate  )) assertthat::assert_that(min(HCR_TAC_reserve_rate  ) >= 0)
+#  if(!is.na(HCR_TAC_carry_rate    )) assertthat::assert_that(min(HCR_TAC_carry_rate    ) >= 0)
+#  if(!is.na(HCR_TAC_reserve_amount)) assertthat::assert_that(min(HCR_TAC_reserve_amount) >= 0)
+#  if(!is.na(HCR_TAC_carry_amount  )) assertthat::assert_that(min(HCR_TAC_carry_amount  ) >= 0)
 
   assertthat::assert_that(is.logical(waa_fun),
                           is.logical(waa_catch_fun),
                           is.logical(maa_fun),
                           is.logical(bias_correction))
 
-  if(!is.na(HCR_TAC_reserve_rate) && !is.na(HCR_TAC_reserve_amount)) stop("HCR_TAC_reserve_rateとHCR_TAC_reserve_amountが同時に指定されています（同時には指定できません）")
-  if(!is.na(HCR_TAC_carry_rate) && !is.na(HCR_TAC_carry_amount))     stop("HCR_TAC_carry_rateとHCR_TAC_carry_amountが同時に指定されています（同時には指定できません）")
+  if(is.numeric(HCR_TAC_reserve_rate) && is.numeric(HCR_TAC_reserve_amount)) stop("HCR_TAC_reserve_rateとHCR_TAC_reserve_amountが同時に指定されています（同時には指定できません）")
+  if(is.numeric(HCR_TAC_carry_rate) && is.numeric(HCR_TAC_carry_amount))     stop("HCR_TAC_carry_rateとHCR_TAC_carry_amountが同時に指定されています（同時には指定できません）")
 
   # define age and year
   nage <- nrow(res_vpa$naa)
@@ -188,8 +192,10 @@ make_future_data <- function(res_vpa,
                                       "recruit","ssb",
                                       "intercept","sd",#9-10
                                       "bias_factor", #11
+                                      "gamma", #12 gamma for shepherd
                                       "biomass","cbiomass", # add biomass statistics
-                                      "blank4","blank5")))
+                                      "blank5")))
+
   #HCR_mat <- array(0, dim=c(total_nyear, nsim, 7),
   HCR_mat <- array(0, dim=c(total_nyear, nsim, 11),
                    dimnames=list(year=allyear_name, nsim=1:nsim,
@@ -245,6 +251,8 @@ make_future_data <- function(res_vpa,
                        recruit_age=recruit_age,
                        setting_release=setting_release,
                        backward_duration=backward_duration,
+                       scale_ssb=scale_ssb,
+                       scale_R  =scale_R,
                        model_average_option=model_average_option,
                        regime_shift_option=regime_shift_option,
                        fix_recruit=fix_recruit)
@@ -336,11 +344,14 @@ make_future_data <- function(res_vpa,
                    recruit_age = recruit_age,
                    max_exploitation_rate=max_exploitation_rate,
                    max_F=max_F,
+                   scale_ssb=scale_ssb,
+                   scale_R  =scale_R,                   
                    HCR_mat = HCR_mat,
                    obj_stat = 0, # 0: mean, 1:geomean
                    objective = 0, # 0: MSY, 1: PGY, 2: percentB0 or Bempirical
                    obj_value = -1,
-                   HCR_function_name=HCR_function_name
+                   HCR_function_name=HCR_function_name,
+                   HCR_reserve_denom=HCR_reserve_denom
   )
 
   if(isTRUE(waa_fun)){
@@ -455,13 +466,14 @@ make_future_data <- function(res_vpa,
 #' 将来予測の実施関数
 #'
 #' @param tmb_data make_future_dataの返り値。将来の生物パラメータや再生産関係のシナリオを年齢×年×シミュレーション回数で指定した様々なarrayが含まれる。
+#' @param optim_method "none"の場合、通常の将来予測を実施. "R": 以下のobj関係の設定とあわせてMSYなどを探索する. "tmb"もあるが、限定した設定でしか使えない
 #' @param SPR_target 目標とする\%SPR。NULL以外の値の場合、過去〜将来のそれぞれの年・シミュレーションが、目標とするF\%SPRに対して何倍にあたるか(F/Ftarget)を計算して、HCR_realizedの"Fratio"に入れる。HCRが生きている年については"beta_gamma"と一致するはず。
 #' @param max_F 漁獲量一定方策を実施する際のF at ageの最大値の上限（将来的にはmake_future_data関数に入れたい)
 #' @param max_exploitation_rate 漁獲量一定方策を実施する際のMを考慮した上での漁獲率の上限（将来的にはmake_future_data関数に入れたい)
 #' @param do_MSE 簡易MSEを実施するか
 #' @param MSE_input_data 簡易MSEを実施する場合、ABC計算するための将来予測を実施するための設定ファイル
-#' @param MSE_nsim 簡易MSEを実施する場合、ABC計算するための将来予測の繰り返し回数。ここを1にすると、決定論的な将来予測の漁獲量が用いられる。
-#' @param MSE_sd 簡易MSEをする場合の加入変動の大きさ。ここをゼロにすると決定論的な将来予測の値を将来の漁獲量として用いる。その場合MSE_nsimは自動的に２に設定される。単純なモデルの場合、ここがゼロでも多分問題ない。モデル平均を使っている場合にはちゃんとした簡易MSEをすること。
+#' @param MSE_nsim 簡易MSEを実施する場合、ABC計算するための将来予測の繰り返し回数。
+#' @param MSE_sd 簡易MSEをする場合の加入変動の大きさ。ここをゼロにすれば決定論的な将来予測の値を得られる。その場合MSE_nsimは自動的に２に設定される。単純なモデルの場合、ここがゼロでも多分問題ない。モデル平均を使っている場合にはちゃんとした簡易MSEをすること。リサンプリングオプションの場合も使えない。
 #' @param objective MSY:MSYの推定、PGY:PGYの値をobj_valueに入れる、percentB0:B0パーセント、何％にするかはobj_valueで指定, SSB:obj_valueで指定した特定の親魚資源量に一致するようにする
 #' @param obj_stat 目的関数を計算するときに利用する計算方法（"mean"だと平均、"median"だと中央値、"geomean"だと幾何平均）
 #' @param obj_value 目的とする値
@@ -470,7 +482,7 @@ make_future_data <- function(res_vpa,
 #' @encoding UTF-8
 
 future_vpa <- function(tmb_data,
-                       optim_method="none", # or "R" or "none"
+                       optim_method="none", # or "R" or "none" or "tmb"
                        multi_init = 1,
                        multi_lower = 0.0001,
                        multi_upper = 10,
@@ -644,9 +656,12 @@ future_vpa_R <- function(naa_mat,
                          objective,
                          obj_value,
                          x,
+                         scale_ssb=1,
+                         scale_R=1,
                          what_return="obj",
                          HCR_mat,
                          HCR_function_name,
+                         HCR_reserve_denom,
                          max_F=exp(10),
                          max_exploitation_rate=0.99,
                          do_MSE=NULL,
@@ -673,10 +688,10 @@ future_vpa_R <- function(naa_mat,
   if(is_maa_fun) when_maa_fun <- apply(maa_mat[,,1],2,sum)==0
 
   # setting for specific function for waa_fun
-  if(is_waa_fun && dimnames(waa_par_mat)[[3]]=="waa_fun_name"){
+  if(is_waa_fun && dimnames(waa_par_mat)[[3]][1]=="waa_fun_name"){
     update_waa_mat <- get(waa_par_mat[1,1,"waa_fun_name"])
   }
-  if(is_waa_catch_fun && dimnames(waa_catch_par_mat)[[3]]=="waa_catch_fun_name"){
+  if(is_waa_catch_fun && dimnames(waa_catch_par_mat)[[3]][1]=="waa_catch_fun_name"){
     update_waa_catch_mat <- get(waa_catch_par_mat[1,1,"waa_catch_fun_name"])
   }    
 
@@ -744,12 +759,12 @@ future_vpa_R <- function(naa_mat,
       # 加入を再生産関係からの予測値とする場合
       if(all(N_mat[1,t,]==0)){
         N_mat[1,t,] <- purrr::pmap_dbl(tibble(x=SR_mat[t,,"SR_type"],
-                                              ssb=spawner_mat[spawn_t,],
-                                              a=SR_mat[t,,"a"],b=SR_mat[t,,"b"]),
-                                       function(x,ssb,a,b){
-                                         fun <- list(SRF_HS,SRF_BH,SRF_RI)[[x]];
-                                         fun(ssb,a,b)
-                                       })
+                                              ssb=spawner_mat[spawn_t,]*scale_ssb,
+                                              a=SR_mat[t,,"a"],b=SR_mat[t,,"b"],gamma=SR_mat[t,,"gamma"]),
+                                       function(x,ssb,a,b,gamma){
+                                         fun <- list(SRF_HS,SRF_BH,SRF_RI,SRF_SH,SRF_CU,SRF_BHS)[[x]];
+                                         fun(ssb,a,b,gamma)
+                                       })*scale_R
         N_mat[1,t,] <- N_mat[1,t,]*exp(SR_mat[t,,"deviance"]) + SR_mat[t,,"intercept"]
       }else{
         # fix_recruitですでに加入尾数が入っていて、自己相関ありの場合
@@ -757,12 +772,12 @@ future_vpa_R <- function(naa_mat,
         # 残差を計算しなおす必要がある -> new_deviance
         if(!all(N_mat[1,t,]==0) && all(SR_mat[t-1,,"rho"]>0)){
           rec_predict <- purrr::pmap_dbl(tibble(x=SR_mat[t,,"SR_type"],
-                                              ssb=spawner_mat[spawn_t,],
-                                              a=SR_mat[t,,"a"],b=SR_mat[t,,"b"]),
-                                         function(x,ssb,a,b){
-                                           fun <- list(SRF_HS,SRF_BH,SRF_RI)[[x]];
-                                           fun(ssb,a,b)
-                                         })
+                                              ssb=spawner_mat[spawn_t,]*scale_ssb,
+                                              a=SR_mat[t,,"a"],b=SR_mat[t,,"b"],gamma=SR_mat[t,,"gamma"]),
+                                         function(x,ssb,a,b,gamma){
+                                           fun <- list(SRF_HS,SRF_BH,SRF_RI,SRF_SH,SRF_CU)[[x]];
+                                           fun(ssb,a,b,gamma)
+                                         })*scale_R
           new_deviance <- log(N_mat[1,t,]) - log(rec_predict)
           SR_mat[t,,"deviance"] <- new_deviance
 
@@ -852,6 +867,8 @@ future_vpa_R <- function(naa_mat,
                      seed_number=MSE_seed,
                      start_random_rec_year_name = dimnames(naa_mat)[[2]][t-1],
                      recruit_age = recruit_age,
+                     scale_ssb=scale_ssb,
+                     scale_R  =scale_R,                     
                      resid_type                 = MSE_input_data$input$resid_type,
                      resample_year_range        = dimnames(naa_mat)[[2]][1]:dimnames(naa_mat)[[2]][t-2],
                      backward_duration          = MSE_input_data$input$backward_duration,
@@ -895,23 +912,34 @@ future_vpa_R <- function(naa_mat,
         HCR_realized[t,,"original_ABC"] <- HCR_mat[t,,"expect_wcatch"]
       }
       HCR_realized[t,,"original_ABC_plus"] <- HCR_realized[t,,"original_ABC"] + HCR_realized[t,,"reserved_catch"]
+      # 比率で繰越量を決める場合
       if(all(!is.na(HCR_mat[t,,"TAC_reserve_rate"]))){
-        HCR_mat[t,,"expect_wcatch"] <- HCR_realized[t,,"original_ABC_plus"] * (1-HCR_mat[t,,"TAC_reserve_rate"])
-      } #
+        if(HCR_reserve_denom=="original_ABC_plus"){
+          HCR_mat[t,,"expect_wcatch"] <- HCR_realized[t,,HCR_reserve_denom] * (1-HCR_mat[t,,"TAC_reserve_rate"])
+        }
+        if(HCR_reserve_denom=="original_ABC"){
+          HCR_mat[t,,"expect_wcatch"] <- HCR_realized[t,,"original_ABC_plus"] - HCR_realized[t,,"original_ABC"] * HCR_mat[t,,"TAC_reserve_rate"]
+          HCR_mat[t,,"expect_wcatch"] <- ifelse(HCR_mat[t,,"expect_wcatch"]<0, 0.01, HCR_mat[t,,"expect_wcatch"])
+        }        
+        
+      }
+      # 漁獲量で繰越量を決める場合
       if(all(!is.na(HCR_mat[t,,"TAC_reserve_amount"]))){
         tmpcatch <- HCR_realized[t,,"original_ABC_plus"] - HCR_mat[t,,"TAC_reserve_amount"]
         HCR_mat[t,,"expect_wcatch"] <- ifelse(tmpcatch<0, 0.01, tmpcatch)
       } #expect_wcatchをゼロにすると不具合がありそうなので、微小値（0.01）を与える
-
+      # 次の年の持ち越し分を計算
       if(t<total_nyear){
         if(all(!is.na(HCR_mat[t,,"TAC_carry_rate"]))){
+          # 翌年に持ち越せる上限量を計算
           max_carry_amount <- HCR_mat[t,,"TAC_carry_rate"]*HCR_realized[t,,"original_ABC"]
         } #
         if(all(!is.na(HCR_mat[t,,"TAC_carry_amount"]))){
           max_carry_amount <- HCR_mat[t,,"TAC_carry_amount"]
-        }                             #
+        }
+        # 実際の漁獲量ともともとのABCの差
         ABC_reserve_amount <- HCR_realized[t,,"original_ABC"] - HCR_mat[t,,"expect_wcatch"]
-        ABC_reserve_amount[ABC_reserve_amount<0] <- 0
+        #ABC_reserve_amount[ABC_reserve_amount<0] <- 0
         HCR_realized[t+1,,"reserved_catch"] <- cbind(max_carry_amount, ABC_reserve_amount) %>%
           apply(1,min)
       }
@@ -1066,6 +1094,8 @@ set_SR_mat <- function(res_vpa=NULL,
                        recruit_intercept=0,
                        setting_release=NULL,
                        recruit_age=0,
+                       scale_ssb=1,
+                       scale_R=1,                       
                        model_average_option=NULL,
                        regime_shift_option=NULL,
                        fix_recruit=NULL
@@ -1111,14 +1141,26 @@ set_SR_mat <- function(res_vpa=NULL,
       SR_mat[,,"SR_type"] <- 3
       SRF <- SRF_RI
     }
+    if(res_SR$input$SR=="Shepherd" | res_SR$input$SR=="SH"){
+      SR_mat[,,"SR_type"] <- 4
+      SRF <- SRF_SH
+    }
+    if(res_SR$input$SR=="Cushing" | res_SR$input$SR=="CU"){
+      SR_mat[,,"SR_type"] <- 5
+      SRF <- SRF_CU
+    }
+    if(res_SR$input$SR=="BHS"){
+      SR_mat[,,"SR_type"] <- 6
+      SRF <- SRF_BHS
+    }            
 
     # define SR parameter
-    if(is.null(regime_shift_option)){
+    if(is.null(regime_shift_option)){ # when no-regime shift
       SR_mat[,,"a"] <- res_SR$pars$a
       SR_mat[,,"b"] <- res_SR$pars$b
       SR_mat[,,"sd"] <- res_SR$pars$sd
     }
-    else{
+    else{ # when regime_shift
       regime_data <- res_SR$regime_resid %>%
         left_join(res_SR$regime_pars, by="regime") %>%
         bind_cols(res_SR$input$SRdata)
@@ -1142,6 +1184,11 @@ set_SR_mat <- function(res_vpa=NULL,
 
       res_SR$pars$rho <- 0
     }
+
+    # set gamma parameter (暫定. regimeありでもなしでも同じgammaがinput$gammaで与えられている場合の特殊ケース)
+    SR_mat[,,"gamma"] <- ifelse(!is.null(res_SR$input$gamma), res_SR$input$gamma, NA)
+#    if(res_SR$input$SR!="Shepherd"&&res_SR$input$SR!="SH") SR_mat[,,"gamma"] <- NA
+      
     SR_mat[,,"rho"] <- res_SR$pars$rho
     SR_mat[random_rec_year_period,,"intercept"] <- recruit_intercept # future intercept
 
@@ -1209,7 +1256,7 @@ set_SR_mat <- function(res_vpa=NULL,
     # intercept=release fish
     SR_mat[recruit_range,,"deviance"] <- SR_mat[recruit_range,,"rand_resid"] <-
         log(SR_mat[recruit_range,,"recruit"]-SR_mat[recruit_range,,"intercept"]) -
-        log(SRF(SR_mat[ssb_range,,"ssb"],SR_mat[recruit_range,,"a"],SR_mat[recruit_range,,"b"]))
+        log(scale_R*SRF(SR_mat[ssb_range,,"ssb"]*scale_ssb,SR_mat[recruit_range,,"a"],SR_mat[recruit_range,,"b"],SR_mat[recruit_range,,"gamma"]))
 
       # define future recruitment deviation
       set.seed(seed_number)
@@ -1286,13 +1333,35 @@ set_SR_mat <- function(res_vpa=NULL,
 }
 
 #' @export
-SRF_HS <- function(x,a,b) ifelse(x>b,b*a,x*a)
+SRF_HS <- function(x,a,b,gamma){
+    ifelse(x>b,b*a,x*a)
+}
 
 #' @export
-SRF_BH <- function(x,a,b) a*x/(1+b*x)
+SRF_BH <- function(x,a,b,gamma){
+    a*x/(1+b*x)
+}
 
 #' @export
-SRF_RI <- function(x,a,b) a*x*exp(-b*x)
+SRF_RI <- function(x,a,b,gamma){
+    a*x*exp(-b*x)
+}
+
+#' @export
+SRF_SH <- function(x,a,b,gamma){
+    a*x/(1+(b*x)^gamma)
+}
+
+#' @export
+SRF_CU <- function(x,a,b,gamma){
+    a*x^b
+}
+
+#' @export
+SRF_BHS <- function(x,a,b,gamma){
+    res <- ifelse(x < b, a*b*(x/b)^{1-((x)/b)^gamma}, a*b)
+    return(res)    
+}
 
 #'
 #' 将来予測用の三次元行列（年齢×年×シミュレーション）を与えられたら, pars.yearで指定された期間のパラメータを平均するか、parで指定されたパラメータを、year_replace_future以降の年で置き換える
@@ -1312,7 +1381,7 @@ make_array <- function(d3_mat, pars, pars.year, year_replace_future){
   else{
     years <- dimnames(d3_mat)[[2]]
     if(is.null(pars)){
-      pars.future <- rowMeans(d3_mat[,years%in%pars.year,1])
+      pars.future <- rowMeans(d3_mat[,years%in%pars.year,1,drop=F])
     }
     else{
       if(length(pars)==dim(d3_mat)[[1]]) pars.future <- pars
@@ -1658,8 +1727,8 @@ update_maa_mat <- function(maa,rand,naa,pars_b0,pars_b1,min_value,max_value){
 #' @encoding UTF-8
 
 get_wcatch <- function(res){
-    if(class(res)=="future_new")  return(apply(res$wcaa,c(2,3),sum))
-    if(class(res)=="vpa" || "tune" %in% names(res$input)){
+    if(class(res)%in%"future_new")  return(apply(res$wcaa,c(2,3),sum))
+    if(class(res)%in%"vpa" || "tune" %in% names(res$input)){
         if(!is.null(res$input$dat$waa.catch)) return(colSums(res$input$dat$caa * res$input$dat$waa.catch,na.rm=T))
         if(is.null(res$input$dat$waa.catch)) return(colSums(res$input$dat$caa * res$input$dat$waa,na.rm=T))
     }
@@ -1667,14 +1736,14 @@ get_wcatch <- function(res){
 
 #' @export
 get_ssb <- function(res){
-    if(class(res)=="future_new")  return(res$SR_mat[,,"ssb"])
-    if(class(res)=="vpa" || "tune" %in% names(res$input))  return(colSums(res$ssb, na.rm=TRUE))
+    if(class(res)%in%"future_new")  return(res$SR_mat[,,"ssb"])
+    if(class(res)%in%"vpa" || "tune" %in% names(res$input))  return(colSums(res$ssb, na.rm=TRUE))
 }
 
 #' @export
 get_U <- function(res){
-    if(class(res)=="future_new")  return(res$HCR_realized[,,"wcatch"]/apply(res$naa * res$waa_catch,c(2,3),sum))
-    if(class(res)=="vpa" || "tune" %in% names(res$input)){
+    if(class(res)%in%"future_new")  return(res$HCR_realized[,,"wcatch"]/apply(res$naa * res$waa_catch,c(2,3),sum))
+    if(class(res)%in%"vpa" || "tune" %in% names(res$input)){
         wcatch <- get_wcatch(res)
         biomass <- colSums(res$naa * res$input$dat$waa,na.rm=T)
         return(wcatch/biomass)
@@ -1726,6 +1795,7 @@ set_lower_limit_catch <- function(catch_previous_year, catch_current_year, lower
 #' @param candidate_B0 b0の計算候補
 #' @param candidate_Babs Babsの計算候補
 #' @param trace_multi （このベクトル）×（管理基準値として計算されるF）の平行状態の資源状態などを計算する。HCR_catchのプロットするときに、この値をもっと細かく設定することが必要になってくるかも
+#' @param multi_upper_PGY PGYを計算するときの探索範囲の上限。デフォルトは10だが、うまくいかない場合にはこの数字を少し変えてみるとよいかも。
 #'
 #' @export
 #' @encoding UTF-8
@@ -1735,7 +1805,8 @@ est_MSYRP <- function(data_future, ncore=0, optim_method="R", compile_tmb=FALSE,
                       only_lowerPGY="lower", candidate_B0=-1, candidate_Babs=-1, candidate_Fbase=-1,
                       calc_yieldcurve=TRUE,
                       trace_multi=c(0.9,0.925,0.95,0.975,1.025,1.05,1.075),
-                      select_Btarget=0, select_Blimit=0, select_Bban=0){
+                      select_Btarget=0, select_Blimit=0, select_Bban=0,
+                      multi_upper_PGY=10){
 
   res_vpa_MSY <- data_future$input$res_vpa
   res_SR_MSY <-  data_future$input$res_SR
@@ -1769,7 +1840,7 @@ est_MSYRP <- function(data_future, ncore=0, optim_method="R", compile_tmb=FALSE,
                                     optim_method=optim_method,
                                     multi_init = res_future_MSY$multi*1.2,
                                     multi_lower= res_future_MSY$multi,
-                                    multi_upper= 10,
+                                    multi_upper= multi_upper_PGY,
                                     objective="PGY"
                                     ))
 

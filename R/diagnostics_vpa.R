@@ -607,7 +607,26 @@ do_estcheck_vpa <- function(res, n_ite = 10, sd_jitter = 1, what_plot = NULL, TM
 
 # author: Kohei Hamabe
 
-plot_residual_vpa <- function(res, index_name = NULL, plot_smooth = FALSE, plot_year = FALSE, plot_scale = FALSE, resid_CI=TRUE, plotAR=FALSE){
+plot_residual_vpa <- function(
+    res,
+    index_name = NULL,
+    plot_smooth = FALSE,
+    plot_year = FALSE,
+    plot_scale = FALSE,
+    resid_CI=TRUE,
+    plotAR=FALSE){
+  input <- res$input
+  input_plot_residual <- list(input = input, #use.indexを考慮し，実際にVPAのチューニングで与えた値
+                              use.index = input$use.index, abund = input$abund, min.age = input$min.age,
+                              max.age = input$max.age, link = input$link, base = input$base,
+                              af = input$af, index.w = input$index.w,
+                              q = res$q, naa = res$naa, faa = res$faa, baa = res$baa, ssb = res$ssb,
+                              pred.index = res$pred.index, sigma = res$sigma, b = res$b)
+  plot_residual_vpa2(res = input_plot_residual, index_name = index_name, plot_smooth = plot_smooth, plot_year = plot_year, plot_scale = plot_scale, resid_CI = resid_CI, plotAR = plotAR)
+}
+
+
+plot_residual_vpa2 <- function(res, index_name = NULL, plot_smooth = FALSE, plot_year = FALSE, plot_scale = FALSE, resid_CI=TRUE, plotAR=FALSE){
   if(is.numeric(res$input$use.index)){
     assertthat::assert_that(length(res$input$dat$index[,1]) >= length(res$input$use.index))
     used_index <- res$input$dat$index[res$input$use.index,]
@@ -616,8 +635,9 @@ plot_residual_vpa <- function(res, index_name = NULL, plot_smooth = FALSE, plot_
   } else {
     assertthat::assert_that(is.numeric(res$input$use.index)|res$input$use.index=="all")
   }
+
   # x軸の範囲
-  if(is.numeric(plot_year)) xlim_year <- c(min(plot_year), max(plot_year)) else xlim_year <- c(min(as.numeric(colnames(res_vpa_estb$naa))), max(as.numeric(colnames(res_vpa_estb$naa))))
+  if(is.numeric(plot_year)) xlim_year <- c(min(plot_year), max(plot_year)) else xlim_year <- c(min(as.numeric(colnames(res$naa))), max(as.numeric(colnames(res$naa))))
 
   d_tmp <- matrix(NA,
                   nrow = length(used_index[1,]),
@@ -628,22 +648,23 @@ plot_residual_vpa <- function(res, index_name = NULL, plot_smooth = FALSE, plot_
   d_tmp[,(3+length(res$q))] <- as.numeric(apply(res$baa, 2, sum))
   d_tmp[,(4+length(res$q))] <- as.numeric(apply(res$ssb, 2, sum))
 
-
   q_tmp <- b_tmp <- sig_tmp <- numeric()
   name_tmp1 <- name_tmp2 <- name_tmp3 <- name_tmp4 <- name_tmp5 <- numeric()
 
   for(i in 1:length(res$q)){
-    if(length(res$input$min.age)==1) min_age_tmp <- res$input$min.age[1] else min_age_tmp <- res$input$min.age[i]
-    if(length(res$input$min.age)==1) max_age_tmp <- res$input$max.age[1] else max_age_tmp <- res$input$max.age[i]
+    if(length(res$min.age)==1) min_age_tmp <- res$min.age[1] else min_age_tmp <- res$min.age[i]
+    if(length(res$min.age)==1) max_age_tmp <- res$max.age[1] else max_age_tmp <- res$max.age[i]
 
     resid_tmp <- log(d_tmp[,i+1]) - log(res$pred.index[i,]) # 対数残差
     sd_resid_tmp <- resid_tmp/sd(resid_tmp, na.rm = TRUE) # 対数残差の標準化残差
 
     #abund.extractor関数で書き換え #catch.prop引数は不要か
-    d_tmp[,(i+length(res$q)*1+4)] <- abund.extractor(abund = res$input$abund[i], naa = res$naa, faa = res$faa,
+	#use.indexを使用した場合のif文は必要なくなったので消去
+    if (is.na(res$link[i])) res$link[i] <- res$link[1]
+	d_tmp[,(i+length(res$q)*1+4)] <- abund.extractor(abund = res$abund[i], naa = res$naa, faa = res$faa,
                                                      dat = res$input$dat,
-                                                     min.age = res$input$min.age[i], max.age = res$input$max.age[i],
-                                                     link = res$input$link, base = res$input$base, af = res$input$af,
+                                                     min.age = res$min.age[i], max.age = res$max.age[i],
+                                                     link = res$link[i], base = res$base, af = res$af,
                                                      sel.def = res$input$sel.def, p.m=res$input$p.m,
                                                      omega=res$input$omega, scale=1) #res$input$scale)
                                                     #res$ssbはスケーリングしていない結果が出ている(2021/06/09KoHMB)
@@ -687,7 +708,7 @@ plot_residual_vpa <- function(res, index_name = NULL, plot_smooth = FALSE, plot_
                                 names_sep = "_",
                                 values_drop_na = TRUE
   )
-
+ 
   if(!is.null(index_name)){
     if(!length(index_name) == length(res$q)) stop(paste0("Length of index_name was different to the number of indices"))
     d_tidy$Index_Label <- rep(index_name, nrow(d_tmp))
@@ -716,77 +737,88 @@ plot_residual_vpa <- function(res, index_name = NULL, plot_smooth = FALSE, plot_
   # 残差プロットに追加する観測誤差と自己相関係数のtidy data
   rho_data <- tibble(Index_Label = unique(d_tidy$Index_Label), sigma = res$sigma, ar1 = rho.numeric, signif = signif.numeric) %>%
     mutate(y = thred_y[y.posi_rho_data], x = xlim_year[1], y.sd = sd.thred_y[sd.y.posi_rho_data])
-
+ 
   if(isTRUE(resid_CI)){
     g1 <- ggplot(d_tidy) +
       geom_ribbon(aes(x = year, ymin = -qnorm(0.025)*sigma, ymax = qnorm(0.025)*sigma), alpha=0.05)+
       geom_ribbon(aes(x = year, ymin = -qnorm(0.1)*sigma, ymax = qnorm(0.1)*sigma), alpha=0.1)+
       geom_point(aes(x=year, y=resid, colour = Index_Label), size = 2) +
-      facet_wrap(~Index_Label, scale = if(plot_scale) "free" else "fixed")+
-      geom_hline(yintercept = 0, size = 1)+
+      facet_wrap(~Index_Label, scale = if(plot_scale) "free" else "fixed",axes="all_x")+
+      geom_hline(yintercept = 0, linewidth = 1)+
       xlab("Year") +
-      xlim(xlim_year) +
+      #xlim(xlim_year) +
       ylab("log(Residual)") +
       theme_SH(base_size = 14)+
       geom_label(data = rho_data,
                  mapping = aes(x = x, y = if(plot_scale)min(d_tidy$resid) else y,
                                label = str_c("sigma=", round(sigma,2),
                                              ", rho=", round(ar1,2), signif)),
-                 vjust="inward", hjust="inward")
+                 vjust="inward", hjust="inward")+
+	  guides(x=guide_axis(minor.ticks = TRUE))+
+	  scale_x_continuous(limits=xlim_year,breaks=scales::breaks_pretty(),minor_breaks=scales::breaks_width(1))
     g1_sd <- ggplot(d_tidy) +
       geom_ribbon(aes(x = year, ymin = -qnorm(0.025), ymax = qnorm(0.025)), alpha=0.05)+
       geom_ribbon(aes(x = year, ymin = -qnorm(0.1), ymax = qnorm(0.1)), alpha=0.1)+
       geom_point(aes(x=year, y=sd.resid, colour = Index_Label), size = 2) +
-      facet_wrap(~Index_Label, scale = if(plot_scale) "fixed" else "free")+
-      geom_hline(yintercept = 0, size = 1)+
+      facet_wrap(~Index_Label, scale = if(plot_scale) "fixed" else "free",axes="all_x")+
+      geom_hline(yintercept = 0, linewidth = 1)+
       xlab("Year") +
-      xlim(xlim_year) +
+      #xlim(xlim_year) +
       ylab("log(Residual)") +
       theme_SH(base_size = 14)+
       geom_label(data = rho_data,
                  mapping = aes(x = x, y = if(plot_scale)min(d_tidy$sd.resid) else y.sd,
                                label = str_c("sigma=", round(sigma,2),
                                              ", rho=", round(ar1,2), signif)),
-                 vjust="inward", hjust="inward")
+                 vjust="inward", hjust="inward")+
+	  guides(x=guide_axis(minor.ticks = TRUE))+
+	  scale_x_continuous(limits=xlim_year, breaks=scales::breaks_pretty(),minor_breaks=scales::breaks_width(1))
   } else {
     g1 <- ggplot(d_tidy) +
       geom_point(aes(x=year, y=resid, colour = Index_Label), size = 2) +
-      facet_wrap(~Index_Label, scale = if(plot_scale) "free" else "fixed")+
-      geom_hline(yintercept = 0, size = 1)+
+      facet_wrap(~Index_Label, scale = if(plot_scale) "free" else "fixed",axes="all_x")+
+      geom_hline(yintercept = 0, linewidth = 1)+
       xlab("Year") +
-      xlim(xlim_year) +
+      #xlim(xlim_year) +
       ylab("log(Residual)") +
       theme_SH(base_size = 14)+
       geom_label(data = rho_data,
                  mapping = aes(x = x, y = if(plot_scale)min(d_tidy$resid) else y,
                                label = str_c("sigma=", round(sigma,2),
                                              ", rho=", round(ar1,2), signif)),
-                 vjust="inward", hjust="inward")
+                 vjust="inward", hjust="inward")+
+	  guides(x=guide_axis(minor.ticks = TRUE))+
+	  scale_x_continuous(limits=xlim_year, breaks=scales::breaks_pretty(),minor_breaks=scales::breaks_width(1))
     g1_sd <- ggplot(d_tidy) +
       geom_point(aes(x=year, y=sd.resid, colour = Index_Label), size = 2) +
-      facet_wrap(~Index_Label, scale = if(plot_scale) "fixed" else "free")+
-      geom_hline(yintercept = 0, size = 1)+
+      facet_wrap(~Index_Label, scale = if(plot_scale) "fixed" else "free",axes="all_x")+
+      geom_hline(yintercept = 0, linewidth = 1)+
       xlab("Year") +
-      xlim(xlim_year) +
+      #xlim(xlim_year) +
       ylab("log(Residual)") +
       theme_SH(base_size = 14)+
       geom_label(data = rho_data,
                  mapping = aes(x = x, y = if(plot_scale)min(d_tidy$sd.resid) else y.sd,
                                label = str_c("sigma=", round(sigma,2),
                                              ", rho=", round(ar1,2), signif)),
-                 vjust="inward", hjust="inward")
+                 vjust="inward", hjust="inward")+
+	  guides(x=guide_axis(minor.ticks = TRUE))+
+	  scale_x_continuous(limits=xlim_year, breaks=scales::breaks_pretty(),minor_breaks=scales::breaks_width(1))
   }
   if(plot_smooth) g1 <- g1 + geom_smooth(aes(x=year, y=resid, colour = Index_Label), lwd = 0.5, se=FALSE, lty=2)
   if(plot_smooth) g1_sd <- g1_sd + geom_smooth(aes(x=year, y=sd.resid, colour = Index_Label), lwd = 0.5, se=FALSE, lty=2)
 
   g2 <- ggplot(d_tidy) +
     geom_point(aes(x=year, y=obs, colour = Index_Label), size = 2) +
-    geom_line(aes(x=year, y=pred, colour = Index_Label), size = 1) +
+    geom_line(aes(x=year, y=pred, colour = Index_Label), linewidth = 1) +
     facet_wrap(~Index_Label, scale="free") +
-    xlim(xlim_year) + ylim(0, NA) +
+    #xlim(xlim_year) + 
+	ylim(0, NA) +
     ylab("Abundance index") +
     xlab("Year") +
-    theme_SH(base_size = 14)
+    theme_SH(base_size = 14)+
+	guides(x=guide_axis(minor.ticks = TRUE))+
+	scale_x_continuous(limits=xlim_year, breaks=scales::breaks_pretty(),minor_breaks=scales::breaks_width(1))
 
   # 資源量と指数の（非）線形性のプロット
   Lab_tmp <- unique(d_tidy$Index_Label)
@@ -797,9 +829,11 @@ plot_residual_vpa <- function(res, index_name = NULL, plot_smooth = FALSE, plot_
                               seq(#min(tmp_data$pred, na.rm = T),
                                 0, max(tmp_data$pred, na.rm = T), length=100))
     predabund_g3[[i]] <- (as.numeric(predIndex_g3[[i]])/res$q[i])^(1/res$b[i])
+
     tmp <- str_split(res$input$abund[i], "") %>% unlist()
-    if(sum(tmp == "N") == 0) predabund_g3[[i]] <- predabund_g3[[i]]*res$input$scale
-  }
+    if(any(tmp == "B")) predabund_g3[[i]] <- predabund_g3[[i]]*res$input$scale
+  }#for(i)
+
   # 横軸に資源量（指数に合わせてSSBやNだったり）、縦軸に予測CPUEを
   # 線が描けるように、横軸100刻みほどでデータがある
   ab_Index_tmp <- data.frame(Index_Label = rep(unique(d_tidy$Index_Label), each = 100),
@@ -868,7 +902,7 @@ do_jackknife_vpa <- function(res,
     used_index <- res$input$dat$index
   } else {
     used_index <- res$input$dat$index[res$input$use.index,]
-  } # 7月7日加筆（浜辺）vpa関数の引数use.index対策
+  }
 
   year <- as.numeric(colnames(res$input$dat$index))
   res_list <- list()
@@ -876,60 +910,41 @@ do_jackknife_vpa <- function(res,
 
   if(method == "index"){
     if(length(used_index[,1]) == 1) stop(paste0('The number of indicies is only 1 !!'))
-
-    if(res$input$use.index[1] == "all"){
-      name_tmp <- rep(NA, length = length(row.names(res$input$dat$index)))
-      for(i in 1:length(name_tmp)){
-        input0 <- res$input
-        input0$dat$index <- res$input$dat$index[-i,]
-        input0$abund <- input0$abund[-i]
-        input0$plot <- FALSE
-        input0$sigma.const <- input0$sigma.const[-i]
-        input0$sigma.constraint <- input0$sigma.constraint[-i]
-        res_tmp <- safe_call(vpa, input0, force=TRUE)  # vpa関数の実行
-
-        res_list[[i]] <- res_tmp
-        abund_tmp[[i]] <- apply(res_tmp$naa,2,sum)
-        ssb_tmp[[i]] <- apply(res_tmp$ssb,2,sum)
-        biom_tmp[[i]] <- apply(res_tmp$baa,2,sum)
-        tf_tmp[[i]] <- res_tmp$faa[,ncol(res_tmp$faa)]
-
-        if(i <= 9){
-          name_tmp[i] <- paste0('Removed index0',i)
-        } else {
-          name_tmp[i] <- paste0('Removed index',i)
-        }
-      } #for(i) データの種類について
+    res_list <-
+      purrr::map(as.list(1:nrow(used_index)),
+                 function(ite){
+                   input0 <- res$input
+                   input0$plot <- FALSE
+                   if(res$input$use.index[1] == "all"){
+                     input0$use.index <- (1:nrow(used_index))[-ite]
+                   } else {
+                     input0$use.index <- input0$use.index[-ite]
+                   }
+                   res_tmp <- do.call(vpa, input0)
+                   if(any(res_tmp$term.f > 10)){
+                     input0$p.init <- as.numeric(res$faa[,ncol(res$faa)])
+                     res_tmp <- suppressWarnings(safe_call(vpa, input0, force=TRUE))
+                   }
+                   if(any(res_tmp$term.f > 10)){
+                     input0$p.init <- input0$p.init * 1.5
+                     res_tmp <- suppressWarnings(safe_call(vpa, input0, force=TRUE))
+                   }
+                   if(any(res_tmp$term.f > 10)){
+                     input0$p.init <- input0$p.init * 0.5
+                     res_tmp <- suppressWarnings(safe_call(vpa, input0, force=TRUE))
+                   }
+                   res_tmp
+                 }) # map()
+    abund_tmp <- purrr::map(res_list, function(x)colSums(x$naa))
+    ssb_tmp   <- purrr::map(res_list, function(x)colSums(x$ssb))
+    biom_tmp  <- purrr::map(res_list, function(x)colSums(x$baa))
+    tf_tmp    <- purrr::map(res_list, function(x)x$faa[,ncol(x$faa)])
+    if(nrow(used_index) <= 9){
+      name_tmp <- str_c('Removed index0',1:nrow(used_index))
     } else {
-      # use.indexに指定がある場合用のif文分岐の追加
-      ## ------------------------------------------------ ##
-      # ここエラー出ないようにコンサバにコーディングしてます
-      # 2021年度までにはここ修正加えたい
-      ## ------------------------------------------------ ##
-      name_tmp <- rep(NA, length = length(row.names(used_index)))
-      for(i in 1:length(name_tmp)){
-        input0 <- res$input
-        input0$use.index <- input0$use.index[-i]
-        #input0$dat$index <- res$input$dat$index[-i,]
-        input0$abund <- input0$abund[-i]
-        input0$plot <- FALSE
-        input0$sigma.const <- input0$sigma.const[-i]
-        input0$sigma.constraint <- input0$sigma.constraint[-i]
-        res_tmp <- safe_call(vpa, input0, force=TRUE)  # vpa関数の実行
-
-        res_list[[i]] <- res_tmp
-        abund_tmp[[i]] <- apply(res_tmp$naa,2,sum)
-        ssb_tmp[[i]] <- apply(res_tmp$ssb,2,sum)
-        biom_tmp[[i]] <- apply(res_tmp$baa,2,sum)
-        tf_tmp[[i]] <- res_tmp$faa[,ncol(res_tmp$faa)]
-
-        if(i <= 9){
-          name_tmp[i] <- paste0('Removed index0',i)
-        } else {
-          name_tmp[i] <- paste0('Removed index',i)
-        }
-      } #for(i) データの種類について
-    }
+      name_tmp <- c(str_c('Removed index0',1:9),
+                    str_c('Removed index',10:nrow(used_index)))
+    }# if()
 
   } else if(method == "all"){ ####-----------------------------------------------------####
 
@@ -946,6 +961,18 @@ do_jackknife_vpa <- function(res,
           input0$dat$index[i,] <- index_tmp
           input0$plot <- FALSE
           res_tmp <- safe_call(vpa, input0, force=TRUE)  # vpa関数の実行
+          if(any(res_tmp$term.f > 10)){
+            input0$p.init <- as.numeric(res$faa[,ncol(res$faa)])
+            res_tmp <- safe_call(vpa, input0, force=TRUE)
+          }
+          if(any(res_tmp$term.f > 10)){
+            input0$p.init <- input0$p.init * 1.5
+            res_tmp <- safe_call(vpa, input0, force=TRUE)
+          }
+          if(any(res_tmp$term.f > 10)){
+            input0$p.init <- input0$p.init * 0.5
+            res_tmp <- safe_call(vpa, input0, force=TRUE)
+          }
 
           if(i == 1){
             res_list[[j]] <- res_tmp
@@ -995,6 +1022,18 @@ do_jackknife_vpa <- function(res,
           input0$dat$index[use.index_tmp,] <- index_tmp
           input0$plot <- FALSE
           res_tmp <- safe_call(vpa, input0, force=TRUE)  # vpa関数の実行
+          if(any(res_tmp$term.f > 10)){
+            input0$p.init <- as.numeric(res$faa[,ncol(res$faa)])
+            res_tmp <- safe_call(vpa, input0, force=TRUE)
+          }
+          if(any(res_tmp$term.f > 10)){
+            input0$p.init <- input0$p.init * 1.5
+            res_tmp <- safe_call(vpa, input0, force=TRUE)
+          }
+          if(any(res_tmp$term.f > 10)){
+            input0$p.init <- input0$p.init * 0.5
+            res_tmp <- safe_call(vpa, input0, force=TRUE)
+          }
 
           if(i == 1){
             res_list[[j]] <- res_tmp
@@ -1084,7 +1123,8 @@ do_jackknife_vpa <- function(res,
   if(!is.null(scale_value)) g4 <- g4 + scale_shape_manual(values = scale_value)
   ## ----------------------------------------------------------------- ##
   return(list(JKplot_vpa = gg,
-              JKplot_par = g4
+              JKplot_par = g4,
+              res_vpa    = res_list
               # 一応オブジェクト残しているが、JKplot_vpaで事足りるな...
   ))
 } # function(do_jackknife_vpa)
@@ -1121,18 +1161,22 @@ plot_resboot_vpa <- function(res, B_ite = 1000, B_method = "p", ci_range = 0.95)
   if(ci_range >= 1) stop(paste0('"ci_range" must be less than 1'))
   res$input$plot <- FALSE
   res_boo <- boo.vpa(res, B = B_ite, method = B_method)
-
+  
   year <- res_boo[[1]]$index %>% colnames() %>% as.numeric()
   ssb_mat <- abund_mat <- biomass_mat <- matrix(NA, nrow = B_ite, ncol = length(year))
-  cor_mat <- NULL
+  cor_mat <-   NULL
+  n_error <- 0
+  
   for(i in 1:B_ite){
     tmp <- res_boo[[i]]
+	if(tmp[1]=="try-error"){n_error <- n_error + 1} else {n_error <- n_error } 
     if(tmp[1]=="try-error")next
     ssb_mat[i,] <- colSums(tmp$ssb, na.rm = TRUE)
     abund_mat[i,] <- as.numeric(tmp$naa[1,])
     biomass_mat[i,] <- colSums(tmp$baa, na.rm = TRUE)
     cor_num <- c(tmp$Fc.at.age, tmp$b, last(colSums(tmp$ssb)), last(as.numeric(tmp$naa[1,]))) %>%
       unlist() %>% as.numeric()
+	  
     if(res$input$last.catch.zero){
       cor_num <- c(tail(colSums(tmp$ssb),2)[1] %>% as.numeric(),
                    tail(tmp$naa[1,],2)[1] %>% as.numeric())
@@ -1140,7 +1184,9 @@ plot_resboot_vpa <- function(res, B_ite = 1000, B_method = "p", ci_range = 0.95)
     cor_mat <- rbind(cor_mat, cor_num)
   } # for(i)
   cor_mat <- as.data.frame(cor_mat)
-  rownames(cor_mat) <- str_c("ite",1:B_ite)
+  
+  rownames(cor_mat) <- str_c("ite",1:(B_ite-n_error))
+  
   colnames(cor_mat) <- c(str_c("term.F_age",1:length(tmp$Fc.at.age)-1),
                          str_c("b",1:length(tmp$b)),
                          "SSB_last", "Recruitment_last")
