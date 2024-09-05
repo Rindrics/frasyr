@@ -2829,13 +2829,13 @@ derive_future_summary <- function(res_future, target=NULL){
 
   tibble(
     year    = as.numeric(dimnames(res_future$SR_mat[,,"ssb"])[[1]]),
-    SSB     = tmpfunc(res_future$SR_mat[,,"ssb"]),
+    SSB     = tmpfunc(res_future$SR_mat[,,"ssb"]),st
     biomass = tmpfunc(res_future$SR_mat[,,"biomass"]),
     cbiomass = tmpfunc(res_future$SR_mat[,,"cbiomass"]),
     recruit = tmpfunc(res_future$SR_mat[,,"recruit"]),
     intercept = tmpfunc(res_future$SR_mat[,,"intercept"]),
     deviance = tmpfunc(res_future$SR_mat[,,"deviance"]),
-    deviance_sd = tmpfunc(res_future$SR_mat[,,"deviance"],fun=sd),
+    deviance_sd = tmpfunc(res_future$SR_mat[,,"deviance"],fun=stats::sd),
     catch   = tmpfunc(res_future$HCR_realized[,,"wcatch"]),
     beta    = tmpfunc(res_future$HCR_mat[,,"beta"]),
     Blimit  = tmpfunc(res_future$HCR_mat[,,"Blimit"]),
