@@ -1,5 +1,10 @@
-## Hanki VPA for Morita-san
-##
+#' csvデータを読み込んでvpa.hay用のデータを作成する関数
+#'
+#' @details `data.handler`の`vpa.hay`関数バージョン。
+#'
+#' @encoding UTF-8
+#'
+#' @export
 
 data.handler.hay <- function(
     caa1,
@@ -433,6 +438,14 @@ zenki <- function(res){
   list(naa=naa1,faa=faa)
 }
 
+#' 半期VPAのレトロスペクティブ解析用の関数
+#'
+#' @details `do_retrospective_vpa`関数内でこの関数を動かしてレトロスペクティブ解析の図示もしている。
+#'
+#' @encoding UTF-8
+#'
+#' @export
+
 hretro_est <- function(res,n=5,b_fix=TRUE,rho_fix=TRUE){
   res.c <- res
 
@@ -504,8 +517,13 @@ sel_const_check <- function(res){
   list(faa_target=target, faa_terminal=faa2[,nc], percent_relative_bias=relative_bias)
 }
 
+#' 半期VPAの作図関数
+#'
+#' @export
+#' @encoding UTF-8
+
 hvpa_plot <- function(res,res0=NULL,years=NULL,age=NULL,rel_heights=c(0.7,0.3),labels=c("Abundance","Fishing Rate")){
-  require(tidyverse)
+  assertthat::assert_that(class(res) == "hvpa")
 
   if (is.null(age)) age <- 0:4
 
@@ -576,8 +594,13 @@ hvpa_plot <- function(res,res0=NULL,years=NULL,age=NULL,rel_heights=c(0.7,0.3),l
   cowplot::plot_grid(p1, pp1, nrow=2, rel_heights=rel_heights,align="v")
 }
 
+#' 半期VPAの作図関数
+#'
+#' @export
+#' @encoding UTF-8
+
 hvpa_plot2 <- function(res,res0=NULL,years=NULL,age=NULL,rel_heights=c(0.7,0.3),labels=c("Abundance","Fishing Rate")){
-  require(tidyverse)
+  assertthat::assert_that(class(res) == "hvpa")
 
   if (is.null(age)) age <- 0:4
 
@@ -634,6 +657,11 @@ hvpa_plot2 <- function(res,res0=NULL,years=NULL,age=NULL,rel_heights=c(0.7,0.3),
   cowplot::plot_grid(p1, pp1, nrow=2, rel_heights=rel_heights,align="v")
 }
 
+#' 半期VPA専用のレトロスペクティブ解析の作図関数
+#'
+#' @export
+#' @encoding UTF-8
+
 hretro_plot <- function(
     res,
     retro,
@@ -651,7 +679,7 @@ hretro_plot <- function(
     ylab=NULL,
     size=1.5
 ){
-
+  assertthat::assert_that(class(res) == "hvpa")
   age <- age + 1
 
   if (hanki) res00 <- res$outputs else res00 <- res
@@ -700,6 +728,9 @@ hretro_plot <- function(
 
   if (out=="dat") return(list(dat=dat1,mohn=mohn_rho)) else return(p1)
 }
+
+#' @export
+#' @encoding UTF-8
 
 make_dat <- function(res){
   require(tidyverse)
@@ -822,6 +853,11 @@ make_dat <- function(res){
   return(dat_for_plot)
 }
 
+#' 半期VPA専用の残差プロット作図の関数
+#'
+#' @export
+#' @encoding UTF-8
+
 residual_plot <- function(
     res,
     rel_heights=c(0.6,0.4),
@@ -830,8 +866,7 @@ residual_plot <- function(
     abund_name=NULL,
     stat=TRUE
 ){
-  require(tidyverse)
-  require(ggpmisc)
+  assertthat::assert_that(class(res) == "hvpa")
 
   dat_for_plot <- make_dat(res)
 
@@ -854,6 +889,11 @@ residual_plot <- function(
   } else return(cowplot::plot_grid(p1, p3, nrow=2, rel_heights=rel_heights,align="v"))
 }
 
+#' 半期VPA専用のバブルプロット作図の関数
+#'
+#' @export
+#' @encoding UTF-8
+
 bubble_plot <- function(
     res,
     target="naa",
@@ -866,7 +906,7 @@ bubble_plot <- function(
     digits=0,
     max_size=10
 ){
-
+  assertthat::assert_that(class(res) == "hvpa")
   if (hanki) res00 <- res$outputs else res00 <- res
   dat <- res00[names(res00)==paste0(target,season)]
 
@@ -979,6 +1019,8 @@ future_projection <- function(
 }
 
 jackknife_test <- function(res){
+  assertthat::assert_that(class(res) == "hvpa")
+
   index <- res$input$dat$index
   use.index <- res$input$use.index
   if (use.index[1] != "all") index <- index[use.index,]
@@ -1078,6 +1120,8 @@ jackknife_plot <- function(
 }
 
 sensitivity_test <- function(res,Delta=2,SD=NULL){
+  assertthat::assert_that(class(res) == "hvpa")
+
   index <- res$input$dat$index
   use.index <- res$input$use.index
   if (use.index[1] != "all") index <- index[use.index,]
@@ -1109,6 +1153,7 @@ sensitivity_test <- function(res,Delta=2,SD=NULL){
 
   list(Delta=Delta,sigma=sigma,res=res, ResP=ResP, ResN=ResN)
 }
+
 
 sensitivity_plot <- function(
     sens_res,
@@ -1199,7 +1244,7 @@ boot_hvpa <- function(
     seed0=1,
     method="P",
     p.init_rewrite=FALSE){
-  require(tidyverse)
+  assertthat::assert_that(class(res) == "hvpa")
 
   set.seed(seed0)
 
@@ -1271,7 +1316,7 @@ boot_hvpa_plot <- function(
     Title=NULL,
     out="plot"
 ){
-  require(tidyverse)
+  assertthat::assert_that(class(res) == "hvpa")
 
   B <- length(res_boot$boot)
 
@@ -1320,12 +1365,19 @@ boot_hvpa_plot <- function(
   if (out=="dat") list(dat_boot=dat_boot, dat_ci=dat_ci) else print(p1)
 }
 
+#' 半期VPA専用のジャックナイフ法の作図関数
+#'
+#' @export
+#' @encoding UTF-8
+
 out_vpa2 <- function(res=NULL, # VPA result
                      rres=NULL, # reference point
                      fres=NULL, # future projection result (not nessesarily)
                      ABC=NULL,
                      filename="vpa" # filename without extension
 ){
+  assertthat::assert_that(class(res) == "hvpa")
+
   old.par <- par()
   exit.func <- function(){
     #    par(old.par)
