@@ -120,7 +120,6 @@ vpa.hay <- function(
     p.init=0.5
 ){
 
-  require(tidyverse)
 
   # inputデータをリスト化
 
@@ -733,7 +732,6 @@ hretro_plot <- function(
 #' @encoding UTF-8
 
 make_dat <- function(res){
-  require(tidyverse)
 
   AR <- res$input$AR
 
