@@ -3,6 +3,12 @@
 on:
   push:
     branches: [dev, dev2024]
+    paths:
+      - R/**
+      - tests/**
+      - data/**
+      - data-raw/**
+      - inst/**
 
 name: test-coverage
 
