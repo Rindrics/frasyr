@@ -9,42 +9,73 @@ on:
 name: test-coverage
 
 jobs:
-  test-coverage:
+  setup-coverage-matrix:
     runs-on: ubuntu-latest
-    env:
-      GITHUB_PAT: ${{ secrets.GITHUB_TOKEN }}
+    outputs:
+      matrix: ${{ steps.set-matrix.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Generate coverage paths matrix
+        id: set-matrix
+        run: |
+          PATHS=$(ls R/*.R | jq -R -s -c 'split("\n")[:-1]')
+          echo "matrix=${PATHS}" >> $GITHUB_OUTPUT
+
+  coverage-parallel:
+    needs: setup-coverage-matrix
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        r-file: ${{ fromJson(needs.setup-coverage-matrix.outputs.matrix) }}
 
     steps:
       - uses: actions/checkout@v4
 
       - uses: r-lib/actions/setup-r@v2
-        with:
-          use-public-rspm: true
 
       - uses: r-lib/actions/setup-r-dependencies@v2
         with:
-          extra-packages: any::covr
+          extra-packages: |
+            any::covr
+            local::.
           needs: coverage
 
-      - name: Test coverage
+      - name: Run coverage for single file
         run: |
-          covr::codecov(
-            quiet = FALSE,
-            clean = FALSE,
-            install_path = file.path(normalizePath(Sys.getenv("RUNNER_TEMP"), winslash = "/"), "package")
-          )
+          coverage <- covr::package_coverage(path = "${{ matrix.r-file }}")
+          saveRDS(coverage, "coverage_${{ github.job }}_${{ strategy.job-index }}.rds")
         shell: Rscript {0}
 
-      - name: Show testthat output
-        if: always()
-        run: |
-          ## --------------------------------------------------------------------
-          find '${{ runner.temp }}/package' -name 'testthat.Rout*' -exec cat '{}' \; || true
-        shell: bash
-
-      - name: Upload test results
-        if: failure()
-        uses: actions/upload-artifact@v4
+      - name: Upload partial coverage
+        uses: actions/upload-artifact@v3
         with:
-          name: coverage-test-failures
-          path: ${{ runner.temp }}/package
+          name: coverage-${{ strategy.job-index }}
+          path: coverage_*.rds
+
+  merge-coverage:
+    needs: coverage-parallel
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: r-lib/actions/setup-r@v2
+
+      - uses: r-lib/actions/setup-r-dependencies@v2
+        with:
+          extra-packages: |
+            any::covr
+            local::.
+          needs: coverage
+
+      - name: Download all coverage artifacts
+        uses: actions/download-artifact@v3
+
+      - name: Merge and upload coverage
+        run: |
+          files <- list.files(pattern = "coverage_.+\\.rds$", recursive = TRUE)
+          coverages <- lapply(files, readRDS)
+          merged <- do.call(covr::merge_coverage, coverages)
+
+          covr::codecov(coverage = merged, quiet = FALSE)
+        shell: Rscript {0}
