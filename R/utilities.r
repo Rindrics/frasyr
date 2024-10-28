@@ -2917,7 +2917,7 @@ derive_future_summary <- function(res_future, target=NULL){
     recruit = tmpfunc(res_future$SR_mat[,,"recruit"]),
     intercept = tmpfunc(res_future$SR_mat[,,"intercept"]),
     deviance = tmpfunc(res_future$SR_mat[,,"deviance"]),
-    deviance_sd = tmpfunc(res_future$SR_mat[,,"deviance"],fun=sd),
+    deviance_sd = tmpfunc(res_future$SR_mat[,,"deviance"],fun=stats::sd),
     catch   = tmpfunc(res_future$HCR_realized[,,"wcatch"]),
     beta    = tmpfunc(res_future$HCR_mat[,,"beta"]),
     Blimit  = tmpfunc(res_future$HCR_mat[,,"Blimit"]),
