@@ -2829,7 +2829,7 @@ derive_future_summary <- function(res_future, target=NULL){
 
   tibble(
     year    = as.numeric(dimnames(res_future$SR_mat[,,"ssb"])[[1]]),
-    SSB     = tmpfunc(res_future$SR_mat[,,"ssb"]),st
+    SSB     = tmpfunc(res_future$SR_mat[,,"ssb"]),
     biomass = tmpfunc(res_future$SR_mat[,,"biomass"]),
     cbiomass = tmpfunc(res_future$SR_mat[,,"cbiomass"]),
     recruit = tmpfunc(res_future$SR_mat[,,"recruit"]),
