@@ -2,16 +2,14 @@
   $schema: "https://docs.renovatebot.com/renovate-schema.json",
   extends: [
     "config:base",
+    ":disableDependencyDashboard",
   ],
   timezone: "Asia/Tokyo",
-
+  enabledManagers: ["github-actions"],
   "github-actions": {
     enabled: true,
     pinDigests: true,
     automerge: false,
     labels: ["renovate"],
-    schedule: [
-      "at 22:30 on Tuesday",
-    ],
   },
 }
