@@ -11,7 +11,7 @@
     automerge: false,
     labels: ["renovate"],
     schedule: [
-      "at 13:05 on Tuesday", // every Tuesday at 13:05 UTC = 22:05 JST
+      "at 22:30 on Tuesday",
     ],
   },
 }
