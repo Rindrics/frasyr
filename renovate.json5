@@ -1,0 +1,16 @@
+{
+  $schema: "https://docs.renovatebot.com/renovate-schema.json",
+  extends: [
+    "config:base",
+  ],
+
+  "github-actions": {
+    enabled: true,
+    pinDigests: true,
+    automerge: false,
+    labels: ["renovate"],
+    schedule: [
+      "at 12:40 on Tuesday", // every Tuesday at 12:40 UTC = 21:40 JST
+    ],
+  },
+}
