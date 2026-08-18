@@ -2,8 +2,8 @@ name: Renovate
 
 on:
   schedule:
-    # Tuesday 23:00 JST (14:00 UTC). GitHub cron can lag by several minutes.
-    - cron: '0 14 * * 2'
+    - cron: '0 23 * * 2'
+      timezone: 'Asia/Tokyo'
   workflow_dispatch:
 
 concurrency:
